@@ -1,5 +1,7 @@
 import os
 
+import av.error
+
 # Force SDL2 to use EGL instead of GLX on X11.
 os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
 
@@ -15,54 +17,46 @@ import ctypes
 import threading
 from typing import Iterator
 from dataclasses import dataclass
+from enum import Enum
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 # import pygame.locals
 from pygame.locals import *
 
+
+class VideoFrameFormat(Enum):
+    RGB = 0,
+    RGBA = 1,
+    JPEG = 2,
+    NV12 = 3,
+    YUVJ420p = 4
+
+
 @dataclass
 class VideoData:
     container: av.container.InputContainer | av.container.OutputContainer
     videoStream: av.VideoStream
     gen: Iterator[av.VideoFrame]
-    framePixFormat: str
+    framePixFormat: VideoFrameFormat
     width: int
     height: int
+    texture: int
     loaded: bool
 
 
 def load_video_async(video_path: str, video_data: VideoData):
     """Loads a video asynchronously and updates the dictionary."""
-    try:
 
-        if video_path.lower().endswith((".jpg", ".jpeg", ".png")):
-            container = av.open(video_path, format="image2")
-            video_stream = container.streams.video[0]
+    my_video_data = load_video(video_path)
+    video_data.container = my_video_data.container
+    video_data.videoStream = my_video_data.videoStream
+    video_data.gen = my_video_data.gen
+    video_data.width = my_video_data.width
+    video_data.height = my_video_data.height
+    video_data.loaded = True  # Flag for main thread to create texture
 
-        else:
-            # hw_device = av.HWDeviceContext.create('vaapi', device='/dev/dri/renderD128')
-            container = av.open(video_path)
-            video_stream = container.streams.video[0]
-            # codec_ctx = video_stream.codec_context
-            # codec_ctx.hw_device_ctx = hw_device
-
-        gen = container.decode(video=0)
-
-        # Store metadata (thread-safe)
-        video_data.container = container
-        video_data.videoStream = video_stream
-        video_data.gen = gen
-        video_data.framePixFormat = "jpeg"
-        video_data.width = video_stream.width
-        video_data.height = video_stream.height
-        video_data.loaded = True  # Flag for main thread to create texture
-
-        print(f"Async Loaded video {video_path}")
-
-    except av.AVError as e:
-        print(f"Error opening video {video_path}: {e}")
-
+    print(f"Async Loaded video {video_path}")
 
 def load_video(video_path):
     """Loads a video asynchronously."""
@@ -70,25 +64,28 @@ def load_video(video_path):
         if video_path.lower().endswith((".jpg", ".jpeg", ".png")):
             container = av.open(video_path, format="image2")
             video_stream = container.streams.video[0]
+            framePixFormat = VideoFrameFormat.RGB
 
         else:
-            # hwaccel = {'device_type_name': 'vaapi', 'device': '/dev/dri/renderD129'}
-#            hw_device = av.HWDeviceContext.create('vaapi', device='/dev/dri/renderD128')
             container = av.open(video_path)
             video_stream = container.streams.video[0]
-            # codec_ctx = video_stream.codec_context
-            # codec_ctx.hw_device_ctx = hw_device
+            framePixFormat = VideoFrameFormat.NV12
+
+        if video_stream.format.is_rgb:
+            framePixFormat = VideoFrameFormat.RGB
+        else:
+            if video_stream.format.name =="yuvj420p":
+                framePixFormat = VideoFrameFormat.YUVJ420p
 
         gen = container.decode(video=0)
 
         # Data structure for async video loading
-        video_data = VideoData(container, video_stream, gen, "", video_stream.width, video_stream.height, True)
+        video_data = VideoData(container, video_stream, gen, framePixFormat, video_stream.width, video_stream.height, None, True)
 
         return video_data
 
-    except av.AVError as e:
+    except av.OSError as e:
         print(f"Error opening video {video_path}: {e}")
-
 
 
 # --- Shader Sources ---
@@ -135,26 +132,31 @@ def create_shader_program():
     )
     return shader
 
-def create_texture(width, height, data=None):
+def create_texture(video_data: VideoData, data=None):
     """Create an empty texture (or initialize with data)."""
-    tex = glGenTextures(1)
-    glBindTexture(GL_TEXTURE_2D, tex)
+    video_data.texture = glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, video_data.texture)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data)
+    if video_data.framePixFormat in (VideoFrameFormat.NV12, VideoFrameFormat.YUVJ420p):
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, video_data.width, video_data.height + video_data.height // 2, 0, GL_RED, GL_UNSIGNED_BYTE, data)
+    else:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, video_data.width, video_data.height, 0, GL_RGB, GL_UNSIGNED_BYTE, data)
     glBindTexture(GL_TEXTURE_2D, 0)
-    return tex
 
 
-def update_texture(tex, frame_array):
+def update_texture(video_data: VideoData, frame_array):
     """
     Updates the given texture with the new frame.
     OpenGL will automatically scale it to fit the viewport.
     """
-    glBindTexture(GL_TEXTURE_2D, tex)
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame_array.shape[1], frame_array.shape[0], GL_RGB, GL_UNSIGNED_BYTE, frame_array)
+    glBindTexture(GL_TEXTURE_2D, video_data.texture)
+    if video_data.framePixFormat in (VideoFrameFormat.NV12, VideoFrameFormat.YUVJ420p):
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame_array.shape[1], frame_array.shape[0], GL_RED, GL_UNSIGNED_BYTE, frame_array)
+    else:
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame_array.shape[1], frame_array.shape[0], GL_RGB, GL_UNSIGNED_BYTE, frame_array)
     glBindTexture(GL_TEXTURE_2D, 0)
 
 
@@ -183,13 +185,13 @@ def main():
 
     # Open the video files using PyAV.
     video1_data = load_video(video_playlist[video_index])
-    texture1 = create_texture(video1_data.width, video1_data.height)
+    create_texture(video1_data)
 
     video_index = (video_index + 1) % len(video_playlist)
 
     video2_data = load_video(video_playlist[video_index])
     video_index = (video_index + 1) % len(video_playlist)
-    texture2 = create_texture(video2_data.width, video2_data.height)
+    create_texture(video2_data)
 
     # Get video dimensions and frame rate (use video1's properties).
     fps = float(video1_data.videoStream.average_rate) if video1_data.videoStream.average_rate else 50.0
@@ -279,9 +281,9 @@ def main():
             video1_data.gen = video1_data.container.decode(video=0)
             frame1 = next(video1_data.gen)
 
-        frame1 = frame1.reformat(format="rgb24")
+        #frame1 = frame1.reformat(format="rgb24")
         img1 = frame1.to_ndarray()
-        update_texture(texture1, img1)
+        update_texture(video1_data, img1)
 
         # Handle looping logic for video2
         if transitioning:
@@ -293,10 +295,10 @@ def main():
                 video2_data.gen = video2_data.container.decode(video=0)
                 frame2 = next(video2_data.gen)
 
-            frame2 = frame2.reformat(format="rgb24")
+            #frame2 = frame2.reformat(format="rgb24")
             img2 = frame2.to_ndarray()
 
-            update_texture(texture2, img2)
+            update_texture(video2_data, img2)
 
             # Determine blending alpha.
             elapsed = time.time() - transition_start_time
@@ -306,7 +308,6 @@ def main():
 
                 # Swap container1 and container2
                 video1_data , video2_data = video2_data, video1_data
-                texture1, texture2 = texture2, texture1  # Now gen1 is the active video
                 alpha = 0.0
                 # Start loading video2 in the background
                 threading.Thread(target=load_video_async, args=(video_playlist[video_index], video2_data)).start()
@@ -318,11 +319,11 @@ def main():
             print("New video loaded, creating texture...")
 
             # Delete old texture before creating a new one
-            if texture2:
-                glDeleteTextures([texture2])
+            if video2_data.texture:
+                glDeleteTextures([video2_data.texture])
 
             # Create a new texture now that we have the correct size
-            texture2 = create_texture(video2_data.width, video2_data.height)
+            create_texture(video2_data)
 
             video2_data.loaded = False  # Reset flag
 
@@ -332,9 +333,9 @@ def main():
         glUniform1f(glGetUniformLocation(shader, "alpha"), alpha)
 
         glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, texture1)
+        glBindTexture(GL_TEXTURE_2D, video1_data.texture)
         glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D, texture2)
+        glBindTexture(GL_TEXTURE_2D, video2_data.texture)
 
         glBindVertexArray(VAO)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
