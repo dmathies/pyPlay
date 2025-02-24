@@ -1,19 +1,15 @@
 import os
-import av.error
-
-# Force SDL2 to use EGL instead of GLX on X11.
-os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
-
-
 import av
+import av.codec
+import av.codec.hwaccel
 import av.container
+import av.error
 import av.format
-import av.video
 import av.stream
+import av.video
 import pygame
 import numpy as np
 import time
-import ctypes
 import threading
 from typing import Iterator
 from dataclasses import dataclass, field
@@ -23,6 +19,13 @@ from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 from pygame.locals import *
 
+import platform
+
+if platform.system() == "Linux":
+    # Force SDL2 to use EGL instead of GLX on X11.
+    os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
+    os.environ["PYOPENGL_PLATFORM"]="egl"
+    os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"]="nvidia"
 
 # --- Video Format Enum ---
 class VideoFrameFormat(Enum):
@@ -63,24 +66,25 @@ def load_video(video_path):
         if video_path.lower().endswith((".jpg", ".jpeg", ".png")):
             container = av.open(video_path, format="image2")
             video_stream = container.streams.video[0]
-            framePixFormat = VideoFrameFormat.RGB
+            frame_pix_format = VideoFrameFormat.RGB
         else:
-            container = av.open(video_path)
+            hwaccel = av.codec.hwaccel.HWAccel("drm", allow_software_fallback=True)
+            container = av.open(video_path, hwaccel=hwaccel)
             video_stream = container.streams.video[0]
             # Default to NV12 then adjust if needed.
-            framePixFormat = VideoFrameFormat.NV12
+            frame_pix_format = VideoFrameFormat.NV12
 
         if video_stream.format.is_rgb:
-            framePixFormat = VideoFrameFormat.RGB
+            frame_pix_format = VideoFrameFormat.RGB
         else:
             if video_stream.format.name == "yuvj420p":
-                framePixFormat = VideoFrameFormat.YUVJ420p
+                frame_pix_format = VideoFrameFormat.YUVJ420p
 
         gen = container.decode(video=0)
 
         video_data = VideoData(
-            container, video_stream, gen, framePixFormat,
-            video_stream.width, video_stream.height, textures=None, loaded=True
+            container, video_stream, gen, frame_pix_format,
+            video_stream.width, video_stream.height, textures={}, loaded=True
         )
         return video_data
 
@@ -155,7 +159,7 @@ vec3 getVideo1Color() {
     } else {
         float y = texture(video1Y, vTexCoords).r;
         // Since U and V textures are half size, scale texture coordinates.
-        vec2 uvCoords = vTexCoords * 0.5;
+        vec2 uvCoords = vTexCoords;
         float u = texture(video1U, uvCoords).r;
         float v = texture(video1V, uvCoords).r;
         return YUV420pToRGB(y, u, v);
@@ -171,7 +175,7 @@ vec3 getVideo2Color() {
         return NV12ToRGB(y, uv);
     } else {
         float y = texture(video2Y, vTexCoords).r;
-        vec2 uvCoords = vTexCoords * 0.5;
+        vec2 uvCoords = vTexCoords;
         float u = texture(video2U, uvCoords).r;
         float v = texture(video2V, uvCoords).r;
         return YUV420pToRGB(y, u, v);
@@ -222,24 +226,35 @@ def create_textures(video_data: VideoData, frame: av.VideoFrame):
         textures['UV'] = create_texture(video_data.width//2, video_data.height//2, uv_plane,  GL_RG8, GL_RG)
         video_data.framePixFormat=VideoFrameFormat.NV12
 
-
     elif frame.format.name in ("yuv420p", "yuvj420p"):
-        y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(video_data.height, video_data.width)
-        u_plane = np.frombuffer(frame.planes[1], dtype=np.uint8).reshape(video_data.height // 2, video_data.width // 2)
-        v_plane = np.frombuffer(frame.planes[2], dtype=np.uint8).reshape(video_data.height // 2, video_data.width // 2)
+        planes = ['Y', 'U', 'V']
 
-        textures['Y'] = create_texture(video_data.width, video_data.height, y_plane,  GL_R8, GL_RED)
-        textures['U'] = create_texture(video_data.width//2, video_data.height//2, u_plane,  GL_R8, GL_RED)
-        textures['V'] = create_texture(video_data.width//2, video_data.height//2, v_plane,  GL_R8, GL_RED)
+        for p in range(3):
+            plane = np.frombuffer(frame.planes[p], dtype=np.uint8).reshape(get_video_plane_size(frame, p))
+            textures[planes[p]] = create_texture(plane.shape[1], plane.shape[0], plane,  GL_R8, GL_RED)
+
         video_data.framePixFormat=VideoFrameFormat.YUVJ420p
 
-
-    elif frame.format.is_rgb:
+    elif frame.format.name in ("rgb"):
         rgb_data = frame.to_ndarray()
         textures['RGB'] = create_texture(video_data.width, video_data.height, rgb_data,  GL_RGB8, GL_RGB)
         video_data.framePixFormat=VideoFrameFormat.RGB
 
+    elif frame.format.name in ("rgba"):
+        rgb_data = frame.to_ndarray()
+        textures['RGB'] = create_texture(video_data.width, video_data.height, rgb_data,  GL_RGBA8, GL_RGBA)
+        video_data.framePixFormat=VideoFrameFormat.RGB
+
     video_data.textures = textures
+
+
+def get_video_plane_size(frame: av.VideoFrame, plane: int):
+    (h, w) = (frame.planes[plane].buffer_size // frame.planes[plane].line_size,
+              frame.planes[plane].line_size)
+
+    # (h, w) = (frame.planes[plane].buffer_size // frame.width, frame.width)
+
+    return h, w
 
 def update_textures(video_data: VideoData, frame: av.VideoFrame):
 
@@ -255,18 +270,26 @@ def update_textures(video_data: VideoData, frame: av.VideoFrame):
         glBindTexture(GL_TEXTURE_2D, 0)
 
     elif frame.format.name in ("yuv420p", "yuvj420p"):
-        y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(video_data.height, video_data.width)
-        u_plane = np.frombuffer(frame.planes[1], dtype=np.uint8).reshape(video_data.height // 2, video_data.width // 2)
-        v_plane = np.frombuffer(frame.planes[2], dtype=np.uint8).reshape(video_data.height // 2, video_data.width // 2)
+        #h= frame.planes[0].buffer_size // video_data.width
+        (h,w) = get_video_plane_size(frame, 0)
+
+        y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(h, w)
+        u_plane = np.frombuffer(frame.planes[1], dtype=np.uint8).reshape(h // 2, w // 2)
+        v_plane = np.frombuffer(frame.planes[2], dtype=np.uint8).reshape(h // 2, w // 2)
 
         glBindTexture(GL_TEXTURE_2D, video_data.textures['Y'])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, video_data.width, video_data.height, GL_RED, GL_UNSIGNED_BYTE, y_plane)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, y_plane)
         glBindTexture(GL_TEXTURE_2D, video_data.textures['U'])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, video_data.width//2, video_data.height//2, GL_RED, GL_UNSIGNED_BYTE, u_plane)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w//2, h//2, GL_RED, GL_UNSIGNED_BYTE, u_plane)
         glBindTexture(GL_TEXTURE_2D, video_data.textures['V'])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, video_data.width//2, video_data.height//2, GL_RED, GL_UNSIGNED_BYTE, v_plane)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w//2, h//2, GL_RED, GL_UNSIGNED_BYTE, v_plane)
         glBindTexture(GL_TEXTURE_2D, 0)
 
+    elif frame.format.name in ("rgba"):
+        rgb_data = frame.to_ndarray()
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['RGB'])
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, video_data.width, video_data.height, GL_RGBA, GL_UNSIGNED_BYTE, rgb_data)
+        glBindTexture(GL_TEXTURE_2D, 0)
     else:
         rgb_data = frame.to_ndarray()
         glBindTexture(GL_TEXTURE_2D, video_data.textures['RGB'])
@@ -276,9 +299,10 @@ def update_textures(video_data: VideoData, frame: av.VideoFrame):
 
 # --- Main Program ---
 def main():
-    video_playlist = ["video1.mp4", "lecture2.jpg", "Market1.jpg", "MemberStates.png", "video2.mp4", "video3.mp4", "video4.mp4"]
+    video_playlist = [ "video4.mp4", "video4.mp4", "MemberStates.png", "lecture2.jpg", "Market1.jpg", "MemberStates.png", "vide1_h265.mp4", "video2.mp4", "video3.mp4", "video4.mp4"]
     video_index = 0
     frames=0
+    seconds=0
 
     pygame.init()
     pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
@@ -406,7 +430,7 @@ def main():
                 video_index = (video_index + 1) % len(video_playlist)
 
         # If a new video has been loaded asynchronously, re-create its textures.
-        if video2_data.loaded and video2_data is None:
+        if video2_data.loaded:
             print("New video loaded, creating textures...")
             # Grab the first frame to initialize textures.
             try:
@@ -480,14 +504,22 @@ def main():
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
         pygame.display.flip()
-        crrent_fps = clock.get_fps()
+        current_fps = clock.get_fps()
         frames += 1
 
-        if frames > crrent_fps:
-            #print(f"fps = {crrent_fps:.2f}")
+        if 0 < current_fps < frames:
+            print(f"fps = {current_fps:.2f}")
             frames=0
+            seconds +=1
+            if seconds >5:
+                seconds=0
+                if not transitioning:
+                    transitioning = True
+                    transition_start_time = time.time()
+                else:
+                    transition_start_time = time.time() - transition_duration
 
-        #clock.tick(fps)
+        clock.tick(60)
 
     video1_data.container.close()
     video2_data.container.close()

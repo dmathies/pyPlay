@@ -80,7 +80,8 @@ def load_video(video_path):
         gen = container.decode(video=0)
 
         # Data structure for async video loading
-        video_data = VideoData(container, video_stream, gen, framePixFormat, video_stream.width, video_stream.height, None, True)
+        video_data = VideoData(container, video_stream, gen, framePixFormat, video_stream.width, video_stream.height, None
+                               , True)
 
         return video_data
 
@@ -162,7 +163,7 @@ def update_texture(video_data: VideoData, frame_array):
 
 # --- Main Program ---
 def main():
-    video_playlist = ["video1.mp4", "lecture2.jpg", "Market1.jpg", "MemberStates.png", "video2.mp4", "video3.mp4", "video4.mp4"]  # Add more videos if needed
+    video_playlist = ["video4.mp4", "video1.mp4", "lecture2.jpg", "Market1.jpg", "MemberStates.png", "video2.mp4", "video3.mp4", "video4.mp4"]  # Add more videos if needed
     video_index = 0  # Track current video
 
     # Initialize Pygame and create an OpenGL context.
