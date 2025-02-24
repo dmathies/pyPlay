@@ -48,13 +48,13 @@ TEXTURE_UNIT_LOOKUP = [GL_TEXTURE0,  GL_TEXTURE1,  GL_TEXTURE2,  GL_TEXTURE3,
 # --- Updated VideoData Dataclass ---
 @dataclass
 class VideoData:
-    container: av.container.InputContainer | av.container.OutputContainer
-    videoStream: av.VideoStream
-    gen: Iterator[av.VideoFrame]
-    framePixFormat: VideoFrameFormat
-    width: int
-    height: int
-    isStill: False
+    container: av.container.InputContainer | av.container.OutputContainer = None
+    videoStream: av.VideoStream = None
+    gen: Iterator[av.VideoFrame] = None
+    framePixFormat: VideoFrameFormat = None
+    width: int = 0
+    height: int = 0
+    isStill: bool = False
     textures: dict = field(default_factory=dict)   # Now holds multiple texture IDs (one per plane)
     status: VideoStatus = VideoStatus.NOT_READY
 
@@ -236,12 +236,12 @@ def create_texture(width:int, height:int, data: np.ndarray, internalFormat:int, 
 
     return tex
 
-
-
 # --- New Texture Creation / Update Functions ---
-def create_textures(video_data: VideoData, frame: av.VideoFrame):
+def create_textures(video_data: VideoData):
 
     textures = {}
+
+    frame = get_next_frame(video_data)
 
     if frame.format.name == "NV12":
         y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(video_data.height, video_data.width)
@@ -277,8 +277,6 @@ def create_textures(video_data: VideoData, frame: av.VideoFrame):
 def get_video_plane_size(frame: av.VideoFrame, plane: int):
     (h, w) = (frame.planes[plane].buffer_size // frame.planes[plane].line_size,
               frame.planes[plane].line_size)
-
-    # (h, w) = (frame.planes[plane].buffer_size // frame.width, frame.width)
 
     return h, w
 
@@ -318,6 +316,105 @@ def update_textures(video_data: VideoData, frame: av.VideoFrame):
         glBindTexture(GL_TEXTURE_2D, 0)
 
 
+def bind_textures(alpha, transitioning, video1_data, video2_data):
+    # --- Bind textures and set shader uniforms ---
+    glUniform1f(UNIFORM_LOCATORS["alpha"], alpha)
+
+    # For each video, bind its textures to designated texture units and set sampler uniforms.
+    # Video1 textures.
+    bind_texture(video1_data, 0)
+
+    # Video2 textures.
+    if transitioning and video2_data.status == VideoStatus.READY:
+        bind_texture(video2_data, 1)
+
+def bind_texture(video_data, layer):
+
+    tex_unit = layer *3
+    locator_base = f"video{(layer+1)}"
+
+    glUniform1i(UNIFORM_LOCATORS[locator_base+"Format"], video_data.framePixFormat.value)
+
+    if video_data.framePixFormat == VideoFrameFormat.RGB:
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['RGB'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"RGB"], tex_unit)
+    elif video_data.framePixFormat == VideoFrameFormat.NV12:
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['Y'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"Y"], tex_unit)
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+1])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['UV'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"UV"], tex_unit+1)
+    else:  # YUVJ420p
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['Y'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"Y"], tex_unit)
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+1])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['U'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"U"], tex_unit+1)
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+2])
+        glBindTexture(GL_TEXTURE_2D, video_data.textures['V'])
+        glUniform1i(UNIFORM_LOCATORS[locator_base+"V"], tex_unit+2)
+
+def setup_geometry():
+    # Define a full-screen quad.
+    vertices = np.array([
+        -1.0, 1.0, 0.0, 0.0,
+        -1.0, -1.0, 0.0, 1.0,
+        1.0, -1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 0.0,
+    ], dtype=np.float32)
+    indices = np.array([0, 1, 2, 2, 3, 0], dtype=np.uint32)
+    VAO = glGenVertexArrays(1)
+    VBO = glGenBuffers(1)
+    EBO = glGenBuffers(1)
+    glBindVertexArray(VAO)
+    glBindBuffer(GL_ARRAY_BUFFER, VBO)
+    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices,
+                 GL_STATIC_DRAW)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
+                          ctypes.c_void_p(0))
+    glEnableVertexAttribArray(0)
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
+                          ctypes.c_void_p(2 * vertices.itemsize))
+    glEnableVertexAttribArray(1)
+    glBindVertexArray(0)
+    print("VAO, VBO, and EBO created")
+    return VAO
+
+def process_frame(video_data):
+    if not video_data.isStill:
+        frame = get_next_frame(video_data)
+        update_textures(video_data, frame)
+
+
+def get_next_frame(video_data):
+    try:
+        frame = next(video_data.gen)
+    except StopIteration:
+        video_data.container.seek(0)
+        video_data.gen = video_data.container.decode(video=0)
+        frame = next(video_data.gen)
+    return frame
+
+
+def setup_pygame():
+    pygame.init()
+    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
+    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
+    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK,
+                                    pygame.GL_CONTEXT_PROFILE_ES)
+    window_size = (1024, 768)
+    pygame.display.set_mode(window_size, DOUBLEBUF | OPENGL, vsync=0)
+    pygame.display.set_caption("Video Crossfade with libav (PyAV)")
+    glViewport(0, 0, window_size[0], window_size[1])
+    print("GL version:", glGetString(GL_VERSION))
+    print(f"Driver {pygame.display.get_driver()}")
+
+
 # --- Main Program ---
 def main():
     video_playlist = [ "lecture2.jpg", "Market1.jpg", "MemberStates.png", "lecture2.jpg", "vide1_h265.mp4", "video2.mp4", "video3.mp4", "video4.mp4"]
@@ -326,31 +423,19 @@ def main():
     frames=0
     seconds=0
 
-    pygame.init()
-    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
-    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
-    pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_ES)
+    setup_pygame()
 
-    window_size = (1024, 768)
-    pygame.display.set_mode(window_size, DOUBLEBUF | OPENGL, vsync=0)
-    pygame.display.set_caption("Video Crossfade with libav (PyAV)")
-    glViewport(0, 0, window_size[0], window_size[1])
-
-    print("GL version:", glGetString(GL_VERSION))
-    print(f"Driver {pygame.display.get_driver()}")
-
-    # Load the first two videos.
+    # Load the first video.
     video1_data = load_video(video_playlist[video_index])
     video_index = (video_index + 1) % len(video_playlist)
-    video2_data = load_video(video_playlist[video_index])
+    video2_data = VideoData(status=VideoStatus.NOT_READY)
+
+    # Load the second video async.
+    threading.Thread(target=load_video_async, args=(video_playlist[video_index], video2_data)).start()
     video_index = (video_index + 1) % len(video_playlist)
 
-    # Initially create textures for video1 and video2.
-    frame1 = next(video1_data.gen)
-    create_textures(video1_data, frame1)
-
-    frame2 = next(video2_data.gen)
-    create_textures(video2_data, frame2)
+    # Initially create textures for video1.
+    create_textures(video1_data)
 
     # Get fps from video1.
     fps = float(video1_data.videoStream.average_rate) if video1_data.videoStream.average_rate else 50.0
@@ -423,15 +508,7 @@ def main():
         # If a new video has been loaded asynchronously, re-create its textures.
         if video2_data.status == VideoStatus.LOADED:
             print("New video loaded, creating textures...")
-            # Grab the first frame to initialize textures.
-            try:
-                frame2 = next(video2_data.gen)
-            except StopIteration:
-                video2_data.container.seek(0)
-                video2_data.gen = video2_data.container.decode(video=0)
-                frame2 = next(video2_data.gen)
-
-            create_textures(video2_data, frame2)
+            create_textures(video2_data)
             video2_data.status = VideoStatus.READY
 
         # Clear
@@ -469,90 +546,6 @@ def main():
         video2_data.container.close()
 
     pygame.quit()
-
-
-def process_frame(video_data):
-    if not video_data.isStill:
-        try:
-            frame1 = next(video_data.gen)
-        except StopIteration:
-            video_data.container.seek(0)
-            video_data.gen = video_data.container.decode(video=0)
-            frame1 = next(video_data.gen)
-
-        update_textures(video_data, frame1)
-
-
-def bind_textures(alpha, transitioning, video1_data, video2_data):
-    # --- Bind textures and set shader uniforms ---
-    glUniform1f(UNIFORM_LOCATORS["alpha"], alpha)
-
-    # For each video, bind its textures to designated texture units and set sampler uniforms.
-    # Video1 textures.
-    bind_texture(video1_data, 0)
-
-    # Video2 textures.
-    if transitioning and video2_data.status == VideoStatus.READY:
-        bind_texture(video2_data, 1)
-
-
-def bind_texture(video_data, layer):
-
-    tex_unit = layer *3
-    locator_base = f"video{(layer+1)}"
-
-    glUniform1i(UNIFORM_LOCATORS[locator_base+"Format"], video_data.framePixFormat.value)
-
-    if video_data.framePixFormat == VideoFrameFormat.RGB:
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['RGB'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"RGB"], tex_unit)
-    elif video_data.framePixFormat == VideoFrameFormat.NV12:
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['Y'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"Y"], tex_unit)
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+1])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['UV'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"UV"], tex_unit+1)
-    else:  # YUVJ420p
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['Y'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"Y"], tex_unit)
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+1])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['U'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"U"], tex_unit+1)
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit+2])
-        glBindTexture(GL_TEXTURE_2D, video_data.textures['V'])
-        glUniform1i(UNIFORM_LOCATORS[locator_base+"V"], tex_unit+2)
-
-
-def setup_geometry():
-    # Define a full-screen quad.
-    vertices = np.array([
-        -1.0, 1.0, 0.0, 0.0,
-        -1.0, -1.0, 0.0, 1.0,
-        1.0, -1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 0.0,
-    ], dtype=np.float32)
-    indices = np.array([0, 1, 2, 2, 3, 0], dtype=np.uint32)
-    VAO = glGenVertexArrays(1)
-    VBO = glGenBuffers(1)
-    EBO = glGenBuffers(1)
-    glBindVertexArray(VAO)
-    glBindBuffer(GL_ARRAY_BUFFER, VBO)
-    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices,
-                 GL_STATIC_DRAW)
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
-                          ctypes.c_void_p(0))
-    glEnableVertexAttribArray(0)
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
-                          ctypes.c_void_p(2 * vertices.itemsize))
-    glEnableVertexAttribArray(1)
-    glBindVertexArray(0)
-    print("VAO, VBO, and EBO created")
-    return VAO
 
 
 if __name__ == "__main__":
