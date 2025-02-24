@@ -13,7 +13,6 @@ import av.stream
 import pygame
 import numpy as np
 import time
-import ctypes
 import threading
 from typing import Iterator
 from dataclasses import dataclass
