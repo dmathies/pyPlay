@@ -2,7 +2,12 @@ import select
 import socket
 import struct
 from enum import IntEnum
-from typing import Callable
+from typing import Callable, Any
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 from ArtNet.helper import (
     ARTNET_REPLY_PARSER,
@@ -23,6 +28,7 @@ from ArtNet.helper import (
 
 ART_NET_PORT = 6454
 
+
 class TriggerKey(IntEnum):
     ASCII = 0
     MACRO = 1
@@ -30,15 +36,17 @@ class TriggerKey(IntEnum):
     SHOW = 3
     UNDEFINED = 4  # 4-255
 
+
 DEFAULT_FPS = 40.0
 
-ArtNetCallback = Callable[[OpCode, str, int, any], None]
+ArtNetCallback: TypeAlias = Callable[[OpCode, str, int, Any], None]
+
 
 class ArtNet:
     def __init__(self, ip: str = "<broadcast>", port: int = ART_NET_PORT) -> None:
         self.address = (ip, port)
 
-        self.sockets = []
+        self.sockets: list[socket.socket] = []
 
         # Create a UDP socket
         self.sock_bcast = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,8 +94,9 @@ class ArtNet:
     def receive(self, buffer_size: int = 1024) -> None:
         # Buffer size of 1024 bytes
 
-        empty = []
+        empty: list[Any] = []
 
+        readable: list[socket.socket]
         readable, writable, exceptional = select.select(self.sockets, empty, empty)
         for s in readable:
             (data, addr) = s.recvfrom(buffer_size)
@@ -105,7 +114,7 @@ class ArtNet:
                 if reply is None:
                     continue
 
-                subscriber(op_code, *addr, reply)
+                subscriber(op_code, *addr, reply)  # type: ignore
 
     def listen(self, timeout: float | None = 3.0) -> None:
         """Listens for any incoming ArtNet packages."""
@@ -123,19 +132,19 @@ class ArtNet:
         """Send an ArtPoll packet."""
         self.tx_sock.sendto(pack_poll(), self.address)
 
-    def send_dmx(self, universe15bit: int, seq: int, dmx_data: bytearray) -> None:
+    def send_dmx(self, universe15bit: int, seq: int, dmx_data: bytes) -> None:
         """Send an ArtDmx packet."""
         self.tx_sock.sendto(pack_dmx(universe15bit, seq, dmx_data), self.address)
 
     def send_nzs(
-        self, universe15bit: int, sequence: int, start_code: int, dmx_data: bytearray
+        self, universe15bit: int, sequence: int, start_code: int, dmx_data: bytes
     ) -> None:
         """Send an ArtNzs packet."""
         self.tx_sock.sendto(
             pack_nzs(universe15bit, sequence, start_code, dmx_data), self.address
         )
 
-    def send_trigger(self, key: int, subkey: int, data: bytearray = b"") -> None:
+    def send_trigger(self, key: int, subkey: int, data: bytes = b"") -> None:
         """Sends a Trigger packet."""
         self.tx_sock.sendto(pack_trigger(key, subkey, data), self.address)
 
@@ -203,36 +212,42 @@ class ArtNet:
                 style=0x02,
                 net_switch=config.get("net", 0),
                 sub_switch=config.get("sub", 0),
-                sw_out=[config.get("universe", 0),0,0,0],
+                sw_out=[config.get("universe", 0), 0, 0, 0],
                 short_name=config.get("port_name", ""),
                 long_name=config.get("long_name", ""),
             ),
             (ip, port),
         )
 
-    def send_tod_data(self, ip: str, port: int, config:dict, tod_payload: []):
+    def send_tod_data(self, ip: str, port: int, config: dict, tod_payload: list[int]):
         self.tx_sock.sendto(pack_tod_data(config, tod_payload), (ip, port))
 
-    def send_rdm(self, ip: str, port: int, config:dict, rdm_payload: bytes):
+    def send_rdm(self, ip: str, port: int, config: dict, rdm_payload: bytes):
 
         op_code = struct.pack("<H", OpCode.ArtRdm)
         data_length = len(rdm_payload)
-        #length_bytes = struct.pack(">H", data_length)
+        # length_bytes = struct.pack(">H", data_length)
         packet = (
-             ART_NET_HEADER
+            ART_NET_HEADER
             + op_code
             + ART_NET_VERSION
-            + b'\x01' # RdmVer
-            + b'\x00' # Port
-            + b'\x00' * 5 # Spare
-            + b'\x00' # FifoAvail
-            + b'\x00' # FifoMax
+            + b"\x01"  # RdmVer
+            + b"\x00"  # Port
+            + b"\x00" * 5  # Spare
+            + b"\x00"  # FifoAvail
+            + b"\x00"  # FifoMax
             + struct.pack("B", config.get("net", 0))
-            + b'\x00' # ArProcess
-            + struct.pack("B", config.get("sub", 0) * 16 + (config.get("universe", 0)))  # Address
+            + b"\x00"  # ArProcess
+            + struct.pack(
+                "B", config.get("sub", 0) * 16 + (config.get("universe", 0))
+            )  # Address
             + rdm_payload
         )
-        checksum = (sum(packet[11:]) + 0xBC) & 0xFFFF  # Sum all bytes and ensure 16-bit value
-        packet_with_checksum = packet + struct.pack(">H", checksum)  # Append as big-endian 16-bit integer
+        checksum = (
+            sum(packet[11:]) + 0xBC
+        ) & 0xFFFF  # Sum all bytes and ensure 16-bit value
+        packet_with_checksum = packet + struct.pack(
+            ">H", checksum
+        )  # Append as big-endian 16-bit integer
 
         self.tx_sock.sendto(packet_with_checksum, (ip, port))

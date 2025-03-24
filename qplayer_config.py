@@ -32,15 +32,19 @@ class FadeType(StrEnum):
     Linear = "Linear"
     Exponential = "Exponential"
 
+
 # === Timecode Utilities ===
 def parse_timecode(time_str: str) -> timedelta:
     h, m, s = time_str.split(":")
-    if '.' in s:
-      s, hh = s.split(".")
+    if "." in s:
+        s, hh = s.split(".")
     else:
-      hh="0"
+        hh = "0"
 
-    return timedelta(hours=int(h), minutes=int(m), seconds=int(s), milliseconds=int(hh) * 10)
+    return timedelta(
+        hours=int(h), minutes=int(m), seconds=int(s), milliseconds=int(hh) * 10
+    )
+
 
 def format_timecode(td: timedelta) -> str:
     total_seconds = int(td.total_seconds())
@@ -49,11 +53,13 @@ def format_timecode(td: timedelta) -> str:
     m, s = divmod(rem, 60)
     return f"{h:02}:{m:02}:{s:02}.{hundredths:02}"
 
+
 def parse_enum(enum_class, value, default=None):
     try:
         return enum_class(value)
     except Exception:
         return default or list(enum_class)[0]
+
 
 # === Point, and FramingShutter ===
 @dataclass
@@ -61,11 +67,13 @@ class Point:
     x: float
     y: float
 
+
 @dataclass
 class FramingShutter:
     rotation: float
     maskStart: float
     softness: float
+
 
 @dataclass
 class Cue:
@@ -80,13 +88,16 @@ class Cue:
     loopMode: LoopMode
     loopCount: int
 
+
 @dataclass
 class GroupCue(Cue):
     pass
 
+
 @dataclass
 class DummyCue(Cue):
     pass
+
 
 @dataclass
 class SoundCue(Cue):
@@ -98,10 +109,12 @@ class SoundCue(Cue):
     fadeOut: float
     fadeType: FadeType
 
+
 @dataclass
 class TimeCodeCue(Cue):
     startTime: timedelta
     duration: timedelta
+
 
 @dataclass
 class StopCue(Cue):
@@ -110,6 +123,7 @@ class StopCue(Cue):
     fadeOutTime: float
     fadeType: FadeType
 
+
 @dataclass
 class VolumeCue(Cue):
     soundQid: str
@@ -117,10 +131,12 @@ class VolumeCue(Cue):
     volume: float
     fadeType: FadeType
 
+
 @dataclass
 class VideoFraming(Cue):
     corners: Optional[List[Point]] = None
     framing: Optional[List[FramingShutter]] = None
+
 
 @dataclass
 class VideoCue(Cue):
@@ -143,9 +159,18 @@ class VideoCue(Cue):
     rotation: Optional[float] = 0.0
     offset: Optional[Point] = None
 
+
 CueUnion = Union[
-    GroupCue, DummyCue, SoundCue, TimeCodeCue, StopCue, VolumeCue, VideoCue, VideoFraming
+    GroupCue,
+    DummyCue,
+    SoundCue,
+    TimeCodeCue,
+    StopCue,
+    VolumeCue,
+    VideoCue,
+    VideoFraming,
 ]
+
 
 @dataclass
 class ShowMetadata:
@@ -160,6 +185,7 @@ class ShowMetadata:
     oscRXPort: int = 9000
     oscTXPort: int = 8000
 
+
 @dataclass
 class QProjConfig:
     fileFormatVersion: int
@@ -167,18 +193,21 @@ class QProjConfig:
     columnWidths: List[float]
     cues: List[CueUnion]
 
+
 def parse_point(p: List[float]) -> Point:
     if len(p) == 2:
         return Point(p[0], p[1])
     else:
-        return Point(0,0)
+        return Point(0, 0)
+
 
 def parse_framing(f: Dict[str, Any]) -> FramingShutter:
     return FramingShutter(
         rotation=f.get("rotation", 0.0),
         maskStart=f.get("maskStart", 0.0),
-        softness=f.get("softness", 0.0)
+        softness=f.get("softness", 0.0),
     )
+
 
 def parse_cue(data: Dict[str, Any]) -> CueUnion:
     base = {
@@ -196,64 +225,75 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
 
     cue_type = base["type"]
     if cue_type == CueType.SoundCue:
-        return SoundCue(**base,
-                        path=data.get("path", ""),
-                        startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
-                        duration=parse_timecode(data.get("duration", "00:00:00.00")),
-                        volume=data.get("volume", 1.0),
-                        fadeIn=data.get("fadeIn", 0.0),
-                        fadeOut=data.get("fadeOut", 0.0),
-                        fadeType=parse_enum(FadeType, data.get("fadeType"))
-                        )
+        return SoundCue(
+            **base,
+            path=data.get("path", ""),
+            startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
+            duration=parse_timecode(data.get("duration", "00:00:00.00")),
+            volume=data.get("volume", 1.0),
+            fadeIn=data.get("fadeIn", 0.0),
+            fadeOut=data.get("fadeOut", 0.0),
+            fadeType=parse_enum(FadeType, data.get("fadeType")),
+        )
     elif cue_type == CueType.TimeCodeCue:
-        return TimeCodeCue(**base,
-                           startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
-                           duration=parse_timecode(data.get("duration", "00:00:00.00"))
-                           )
+        return TimeCodeCue(
+            **base,
+            startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
+            duration=parse_timecode(data.get("duration", "00:00:00.00")),
+        )
     elif cue_type == CueType.StopCue:
-        return StopCue(**base,
-                       stopQid=data.get("stopQid"),
-                       stopMode=parse_enum(StopMode, data.get("stopMode")),
-                       fadeOutTime=data.get("fadeOutTime", 0.0),
-                       fadeType=parse_enum(FadeType, data.get("fadeType"))
-                       )
+        return StopCue(
+            **base,
+            stopQid=str(data.get("stopQid")),
+            stopMode=parse_enum(StopMode, data.get("stopMode")),
+            fadeOutTime=data.get("fadeOutTime", 0.0),
+            fadeType=parse_enum(FadeType, data.get("fadeType")),
+        )
     elif cue_type == CueType.VolumeCue:
-        return VolumeCue(**base,
-                         soundQid=data.get("soundQid"),
-                         fadeTime=data.get("fadeTime", 0.0),
-                         volume=data.get("volume", 1.0),
-                         fadeType=parse_enum(FadeType, data.get("fadeType"))
-                         )
+        return VolumeCue(
+            **base,
+            soundQid=str(data.get("soundQid")),
+            fadeTime=data.get("fadeTime", 0.0),
+            volume=data.get("volume", 1.0),
+            fadeType=parse_enum(FadeType, data.get("fadeType")),
+        )
     elif cue_type == CueType.VideoCue:
-        return VideoCue(**base,
-                        path=data.get("path", ""),
-                        zIndex=data.get("zindex", 0),
-                        shader=data.get("shader", "default"),
-                        alphaPath=data.get("alphaPath", ""),
-                        alphaMode=data.get("alphaMode", 0),
-                        startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
-                        duration=parse_timecode(data.get("duration", "00:00:00.00")),
-                        dimmer=data.get("dimmer", 1.0),
-                        volume=data.get("volume", 1.0),
-                        fadeIn=data.get("fadeIn", 0.0),
-                        fadeOut=data.get("fadeOut", 0.0),
-                        fadeType=parse_enum(FadeType, data.get("fadeType")),
-                        brightness=data.get("brightness", 1.0),
-                        contrast=data.get("contrast", 1.0),
-                        gamma=data.get("gamma", 1.0),
-                        scale=data.get("scale", 1.0),
-                        rotation=data.get("rotation", 0.0),
-                        offset=parse_point(data["offset"]) if "offset" in data else Point(0,0),
-                        )
+        return VideoCue(
+            **base,
+            path=data.get("path", ""),
+            zIndex=data.get("zindex", 0),
+            shader=data.get("shader", "default"),
+            alphaPath=data.get("alphaPath", ""),
+            alphaMode=data.get("alphaMode", 0),
+            startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
+            duration=parse_timecode(data.get("duration", "00:00:00.00")),
+            dimmer=data.get("dimmer", 1.0),
+            volume=data.get("volume", 1.0),
+            fadeIn=data.get("fadeIn", 0.0),
+            fadeOut=data.get("fadeOut", 0.0),
+            fadeType=parse_enum(FadeType, data.get("fadeType")),
+            brightness=data.get("brightness", 1.0),
+            contrast=data.get("contrast", 1.0),
+            gamma=data.get("gamma", 1.0),
+            scale=data.get("scale", 1.0),
+            rotation=data.get("rotation", 0.0),
+            offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
+        )
     elif cue_type == CueType.VideoFraming:
-        return VideoFraming(**base,
-                        corners=[parse_point(p) for p in data.get("corners", [[0, 0], [1, 0], [1, 1], [0, 1]])],
-                        framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])]
-                        )
+        return VideoFraming(
+            **base,
+            corners=[
+                parse_point(p)
+                for p in data.get("corners", [[0, 0], [1, 0], [1, 1], [0, 1]])
+            ],
+            framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])],
+        )
     elif cue_type == CueType.GroupCue:
         return GroupCue(**base)
     elif cue_type == CueType.DummyCue:
         return DummyCue(**base)
+    return DummyCue(**base)
+
 
 def load_qproj(path: str) -> QProjConfig:
     with open(path, "r") as f:
@@ -264,5 +304,5 @@ def load_qproj(path: str) -> QProjConfig:
         fileFormatVersion=data["fileFormatVersion"],
         showMetadata=show_metadata,
         columnWidths=data["columnWidths"],
-        cues=cues
+        cues=cues,
     )

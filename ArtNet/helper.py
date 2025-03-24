@@ -4,14 +4,19 @@ import re
 from re import match
 from enum import IntEnum
 from typing import Any
+import sys
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 from numpy import number
 
-#from artnet import ART_NET_PORT
+# from artnet import ART_NET_PORT
 
 
 ART_NET_PORT = 6454
-ArtNetFieldDict = dict[str: any] | None
+ArtNetFieldDict: TypeAlias = dict[str, Any] | None
 
 
 # Constants for Art-Net
@@ -41,12 +46,11 @@ class OpCode(IntEnum):
     ArtUNKNOWN = 0xFFFF
 
 
-
 def is_artnet(data: bytes) -> bool:
     return data.startswith(ART_NET_HEADER)
 
 
-def parse_header(data: bytearray) -> OpCode | None:
+def parse_header(data: bytes) -> OpCode | None:
     if is_artnet(data) and len(data) >= 10:
         op_code_from_byte = struct.unpack("<H", data[8:10])[0]
         try:
@@ -264,6 +268,7 @@ def parse_command(data: bytes) -> ArtNetFieldDict:
 
     return reply
 
+
 def parse_tod_request(data: bytes) -> ArtNetFieldDict:
     """
     Parses an ArtTodRequest packet.
@@ -284,6 +289,7 @@ def parse_tod_request(data: bytes) -> ArtNetFieldDict:
         Spare=spare,
     )
     return reply
+
 
 def parse_tod_data(data: bytes) -> ArtNetFieldDict:
     """
@@ -306,7 +312,7 @@ def parse_tod_data(data: bytes) -> ArtNetFieldDict:
     data_length = struct.unpack(">H", data[14:16])[0]
     if len(data) < 16 + data_length:
         return None
-    tod_data = data[16:16+data_length]
+    tod_data = data[16 : 16 + data_length]
     reply = dict(
         ProtVer=prot_ver,
         Sequence=sequence,
@@ -315,6 +321,7 @@ def parse_tod_data(data: bytes) -> ArtNetFieldDict:
         Data=tod_data,
     )
     return reply
+
 
 def parse_tod_control(data: bytes) -> ArtNetFieldDict:
     """
@@ -547,7 +554,7 @@ def pack_poll() -> bytes:
     return packet
 
 
-def pack_dmx(universe15bit: int, seq: int, dmx_data: bytearray) -> bytes:
+def pack_dmx(universe15bit: int, seq: int, dmx_data: bytes) -> bytes:
     # Sequence, physical and universe
     sequence = struct.pack("<B", seq)
     physical = struct.pack("<B", 0)
@@ -581,7 +588,7 @@ def pack_dmx(universe15bit: int, seq: int, dmx_data: bytearray) -> bytes:
 
 
 def pack_nzs(
-    universe15bit: int, sequence: int, start_code: int, dmx_data: bytearray
+    universe15bit: int, sequence: int, start_code: int, dmx_data: bytes
 ) -> bytes:
     # Sequence, start code and universe
     seq = struct.pack("<B", sequence)
@@ -596,7 +603,6 @@ def pack_nzs(
 
     # Length of DMX data
     dmx_length = struct.pack(">H", size)
-
 
     # OpCode
     op_code = struct.pack("<H", OpCode.ArtNzs)
@@ -616,7 +622,7 @@ def pack_nzs(
     return packet
 
 
-def pack_trigger(key: int, subkey: int, data: bytearray = b"") -> bytes:
+def pack_trigger(key: int, subkey: int, data: bytes = b"") -> bytes:
     key_byte = struct.pack("<B", key)
     subkey_byte = struct.pack("<B", subkey)
     filler = struct.pack("<H", 0x0000)
@@ -643,6 +649,7 @@ def pack_sync() -> bytes:
 
     return packet
 
+
 def pack_poll_reply(
     ip: str = "0.0.0.0",
     port: int = 0,
@@ -663,10 +670,10 @@ def pack_poll_reply(
     sw_macro: int = 0,
     sw_remote: int = 0,
     style: int = 0,
-    mac_address: bytes = b'\x00\x00\x00\x00\x00\x00',
+    mac_address: bytes = b"\x00\x00\x00\x00\x00\x00",
     bind_ip: str = "0.0.0.0",
     bind_index: int = 1,
-    status2: int = 0b11001110
+    status2: int = 0b11001110,
 ) -> bytes:
     """
     Constructs an ArtPollReply packet according to the Art-Net protocol.
@@ -708,7 +715,7 @@ def pack_poll_reply(
 
     # Port (2 bytes) - Art-Net port is usually 0x1936; we pack in network order
     if port == 0:
-        port= 0x1936
+        port = 0x1936
 
     port_bytes = struct.pack("!H", port)
 
@@ -723,23 +730,23 @@ def pack_poll_reply(
     status1_byte = struct.pack("B", status1)
 
     # Short name: 18 bytes ASCII, null-padded
-    short_name_bytes = short_name.encode("ascii")[:18].ljust(18, b'\x00')
+    short_name_bytes = short_name.encode("ascii")[:18].ljust(18, b"\x00")
 
     # Long name: 64 bytes ASCII, null-padded
-    long_name_bytes = long_name.encode("ascii")[:64].ljust(64, b'\x00')
+    long_name_bytes = long_name.encode("ascii")[:64].ljust(64, b"\x00")
 
     # Node report: 64 bytes ASCII, null-padded
-    node_report_bytes = node_report.encode("ascii")[:64].ljust(64, b'\x00')
+    node_report_bytes = node_report.encode("ascii")[:64].ljust(64, b"\x00")
 
     # Number of ports (1 byte)
     num_ports_byte = struct.pack("!H", num_ports)
 
     # Ensure lists for port types, good input, and good output are 4 items long each
-    port_types = (port_types + [0]*4)[:4]
-    good_input = (good_input + [0]*4)[:4]
-    good_output = (good_output + [0]*4)[:4]
-    sw_in = (sw_in + [0]*4)[:4]
-    sw_out = (sw_out + [0]*4)[:4]
+    port_types = (port_types + [0] * 4)[:4]
+    good_input = (good_input + [0] * 4)[:4]
+    good_output = (good_output + [0] * 4)[:4]
+    sw_in = (sw_in + [0] * 4)[:4]
+    sw_out = (sw_out + [0] * 4)[:4]
 
     port_types_bytes = bytes(port_types)
     good_input_bytes = bytes(good_input)
@@ -753,13 +760,13 @@ def pack_poll_reply(
     sw_remote_byte = struct.pack("B", sw_remote)
 
     # 3 spare bytes (all zeros)
-    spare_bytes = b'\x00' * 3
+    spare_bytes = b"\x00" * 3
 
     # Style (1 byte)
     style_byte = struct.pack("B", style)
 
     # MAC address: must be exactly 6 bytes (pad or truncate as needed)
-    mac_address_bytes = mac_address[:6].ljust(6, b'\x00')
+    mac_address_bytes = mac_address[:6].ljust(6, b"\x00")
 
     # Bind IP (4 bytes)
     bind_ip_bytes = socket.inet_aton(bind_ip)
@@ -771,7 +778,7 @@ def pack_poll_reply(
     status2_byte = struct.pack("B", status2)
 
     # Spare2: 26 bytes of zeros
-    spare2_bytes = b'\x00' * 26
+    spare2_bytes = b"\x00" * 26
 
     packet = (
         ART_NET_HEADER
@@ -808,6 +815,7 @@ def pack_poll_reply(
 
     return packet
 
+
 def pack_tod_request() -> bytes:
     """
     Packs an ArtTodRequest packet.
@@ -821,12 +829,12 @@ def pack_tod_request() -> bytes:
     """
     op_code = struct.pack("<H", OpCode.ArtTodRequest)
     prot_ver_bytes = ART_NET_VERSION
-    spare = b'\x00' * 10
+    spare = b"\x00" * 10
     packet = ART_NET_HEADER + op_code + prot_ver_bytes + spare
     return packet
 
 
-def pack_tod_data(config: dict[str, Any], tod_data: [number]) -> bytes:
+def pack_tod_data(config: dict[str, Any], tod_data: list[int]) -> bytes:
     """
     Packs an ArtTodData packet.
     """
@@ -837,19 +845,22 @@ def pack_tod_data(config: dict[str, Any], tod_data: [number]) -> bytes:
         ART_NET_HEADER
         + op_code
         + ART_NET_VERSION
-        + b'\x01' # RdmVer
-        + b'\x01' # Port
-        + b'\x00' * 6 # Spare
-        + b'\x01' # BindIndex
+        + b"\x01"  # RdmVer
+        + b"\x01"  # Port
+        + b"\x00" * 6  # Spare
+        + b"\x01"  # BindIndex
         + struct.pack("B", config.get("net", 0))
-        + b'\x00' # TodFull
-        + struct.pack("B", config.get("sub", 0) * 16 + (config.get("universe", 0)))  # Address
+        + b"\x00"  # TodFull
+        + struct.pack(
+            "B", config.get("sub", 0) * 16 + (config.get("universe", 0))
+        )  # Address
         + length_bytes  # UidTotal
-        + b'\x00' # BlockCount
-        + struct.pack("B", data_length) # UidCount
+        + b"\x00"  # BlockCount
+        + struct.pack("B", data_length)  # UidCount
         + b"".join(x.to_bytes(6, byteorder="big") for x in tod_data)
     )
     return packet
+
 
 def pack_tod_control(command: int) -> bytes:
     """
@@ -866,7 +877,7 @@ def pack_tod_control(command: int) -> bytes:
     op_code = struct.pack("<H", OpCode.ArtTodControl)
     prot_ver_bytes = ART_NET_VERSION
     command_byte = struct.pack("<B", command)
-    spare = b'\x00'
+    spare = b"\x00"
     packet = ART_NET_HEADER + op_code + prot_ver_bytes + command_byte + spare
     return packet
 
@@ -886,7 +897,7 @@ def pack_data(format_string, data):
         bytes: Packed binary data.
     """
 
-    format_tokens = [token.strip() for token in format_string.split(',')]
+    format_tokens = [token.strip() for token in format_string.split(",")]
     packed_bytes = bytearray()
     data_index = 0
 
@@ -898,25 +909,27 @@ def pack_data(format_string, data):
             array_data = data[data_index]
 
             if not isinstance(array_data, (list, tuple)):
-                raise ValueError(f"Expected list/tuple for format [{fmt}], got {type(array_data)}")
+                raise ValueError(
+                    f"Expected list/tuple for format [{fmt}], got {type(array_data)}"
+                )
 
             for item in array_data:
-                if isinstance(item, str) and 's' in fmt:
-                    item = item.encode('utf-8')  # Convert strings to bytes
+                if isinstance(item, str) and "s" in fmt:
+                    item = item.encode("utf-8")  # Convert strings to bytes
                 packed_bytes.extend(struct.pack(fmt, item))
 
         else:
-            if isinstance(data, str) and 's' in token:
-                item = data.encode('utf-8')  # Convert string to bytes if needed
+            if isinstance(data, str) and "s" in token:
+                item = data.encode("utf-8")  # Convert string to bytes if needed
             else:
-                if  isinstance(data, (list, tuple)):
+                if isinstance(data, (list, tuple)):
                     item = data[data_index]
                 else:
                     item = data
 
             # Fix: Ensure a string is treated as a full value, not iterated
-            if isinstance(item, str) and 's' in token:
-                item = item.encode('utf-8')  # Convert string to bytes if needed
+            if isinstance(item, str) and "s" in token:
+                item = item.encode("utf-8")  # Convert string to bytes if needed
 
             packed_bytes.extend(struct.pack(token, item))
 
@@ -940,7 +953,7 @@ def unpack_data(format_string, packed_bytes):
         tuple: Unpacked data (or lists for array formats).
     """
 
-    format_tokens = [token.strip() for token in format_string.split(',')]
+    format_tokens = [token.strip() for token in format_string.split(",")]
     data = []
     offset = 0
 
@@ -950,9 +963,14 @@ def unpack_data(format_string, packed_bytes):
         if array_match:
             fmt = array_match.group(1)  # Extract format inside []
             fmt_size = struct.calcsize(fmt)  # Get size of each element
-            array_length = (len(packed_bytes) - offset) // fmt_size  # Calculate elements
+            array_length = (
+                len(packed_bytes) - offset
+            ) // fmt_size  # Calculate elements
 
-            array_data = [struct.unpack_from(fmt, packed_bytes, offset + i * fmt_size)[0] for i in range(array_length)]
+            array_data = [
+                struct.unpack_from(fmt, packed_bytes, offset + i * fmt_size)[0]
+                for i in range(array_length)
+            ]
             data.append(array_data)
             offset += array_length * fmt_size
 
@@ -964,9 +982,11 @@ def unpack_data(format_string, packed_bytes):
 
     return tuple(data)
 
+
 import json
 
 from ArtNet.rdm import RdmParameterID
+
 
 def serialize_device_info(device_info):
     """
@@ -976,7 +996,10 @@ def serialize_device_info(device_info):
 
     def custom_serializer(obj):
         if isinstance(obj, dict):
-            return {k.name if isinstance(k, RdmParameterID) else k: custom_serializer(v) for k, v in obj.items()}
+            return {
+                k.name if isinstance(k, RdmParameterID) else k: custom_serializer(v)
+                for k, v in obj.items()
+            }
         elif isinstance(obj, list):
             return [custom_serializer(v) for v in obj]
         elif isinstance(obj, tuple):
@@ -986,6 +1009,7 @@ def serialize_device_info(device_info):
         return obj  # Return other types unchanged
 
     return json.dumps(custom_serializer(device_info), indent=2, separators=(",", ": "))
+
 
 def deserialize_device_info(json_string):
     """
@@ -1008,7 +1032,9 @@ def deserialize_device_info(json_string):
 
     return custom_deserializer(json.loads(json_string))
 
+
 import yaml
+
 
 def serialize_device_info_yaml(device_info):
     """
@@ -1019,7 +1045,10 @@ def serialize_device_info_yaml(device_info):
 
     def custom_serializer(obj):
         if isinstance(obj, dict):
-            return {k.name if isinstance(k, RdmParameterID) else k: custom_serializer(v) for k, v in obj.items()}
+            return {
+                k.name if isinstance(k, RdmParameterID) else k: custom_serializer(v)
+                for k, v in obj.items()
+            }
         elif isinstance(obj, list):
             return [custom_serializer(v) for v in obj]
         elif isinstance(obj, tuple):
@@ -1030,6 +1059,7 @@ def serialize_device_info_yaml(device_info):
 
     return yaml.dump(custom_serializer(device_info), default_flow_style=False)
 
+
 def deserialize_device_info_yaml(yaml_string):
     """
     Loads YAML and converts RdmParameterID keys back into Enum objects.
@@ -1037,7 +1067,12 @@ def deserialize_device_info_yaml(yaml_string):
 
     def custom_deserializer(obj):
         if isinstance(obj, dict):
-            return {RdmParameterID[k] if k in RdmParameterID.__members__ else k: custom_deserializer(v) for k, v in obj.items()}
+            return {
+                (
+                    RdmParameterID[k] if k in RdmParameterID.__members__ else k
+                ): custom_deserializer(v)
+                for k, v in obj.items()
+            }
         elif isinstance(obj, list):
             return [custom_deserializer(v) for v in obj]
         return obj
