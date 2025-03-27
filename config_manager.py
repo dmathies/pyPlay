@@ -13,7 +13,7 @@ class ConfigManager:
         except FileNotFoundError:
             return {
                 "dmx_config": {"universe": 0, "net": 0, "sub": 0},
-                "osc_config": {"osc_port": 9000, "osc_name": "Video1"},
+                "osc_config": {"osc_tx_port": 8000, "osc_rx_port": 9000, "osc_name": "Video1"},
                 "ip_address": "auto",
             }
 
@@ -27,5 +27,11 @@ class ConfigManager:
     def get_dmx_config(self):
         return self.config.get("dmx_config", {})
 
-    def get_osc_port(self):
-        return self.config.get("osc_config", {}).get("osc_port", 9000)
+    def get_osc_rx_port(self):
+        return self.config.get("osc_config", {}).get("osc_rx_port", 9000)
+
+    def get_osc_tx_port(self):
+        return self.config.get("osc_config", {}).get("osc_tx_port", 8000)
+
+    def get_osc_name(self):
+        return self.config.get("osc_config", {}).get("osc_name", "None")

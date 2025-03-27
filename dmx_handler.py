@@ -3,7 +3,7 @@ import ArtNet
 import socket
 import os
 import numpy as np
-from ArtNet import ArtNetClient
+from ArtNet.client import ArtNetClient
 from ArtNet.helper import serialize_device_info, deserialize_device_info
 from yaml import dump as yaml_dump
 from yaml import safe_load

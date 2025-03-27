@@ -9,4 +9,5 @@ __all__ = [
 
 from .artnet import ART_NET_PORT, DEFAULT_FPS, ArtNet, ArtNetCallback, TriggerKey
 from .helper import OpCode
-from artnet.client import ArtNetClient  # type: ignore
+from .client import ArtNetClient  # type: ignore
+from .rdm import parse_rdm

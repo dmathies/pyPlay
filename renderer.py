@@ -9,7 +9,7 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import sys
 import os
 if sys.version_info >= (3, 9):
-    from importlib.resources import files
+    from importlib.resources import files, read_text
 else:
     from importlib.resources import open_binary, read_text
 
@@ -87,7 +87,7 @@ class Renderer:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-        active_cues = [
+        active_cues[:] = [
             cue for cue in active_cues if not cue.complete
         ]  # Remove completed cues
 
@@ -97,7 +97,7 @@ class Renderer:
                 self.create_textures(active_cue.video_data)
                 active_cue.video_data.status = VideoStatus.READY
 
-            if active_cue.video_data.status == VideoStatus.READY:
+            if active_cue.video_data.status == VideoStatus.READY and active_cue.paused == False:
                 frame = active_cue.video_data.get_next_frame()
                 self.update_textures(active_cue.video_data, frame)
 
@@ -105,7 +105,7 @@ class Renderer:
                 self.create_textures(active_cue.alpha_video_data)
                 active_cue.alpha_video_data.status = VideoStatus.READY
 
-            if active_cue.alpha_video_data.status == VideoStatus.READY:
+            if active_cue.alpha_video_data.status == VideoStatus.READY and active_cue.paused == False:
                 frame = active_cue.alpha_video_data.get_next_frame()
                 self.update_textures(active_cue.alpha_video_data, frame)
 

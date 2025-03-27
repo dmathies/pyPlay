@@ -106,7 +106,7 @@
       "enabled": true,
       "delay": "00:00:00",
       "loopMode": "Looped",
-      "loopCount": 10
+      "loopCount": 3
     },
     {
       "$type": "VideoFraming",

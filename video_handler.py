@@ -46,10 +46,8 @@ class VideoData:
         return frame
 
     def seek_start(self):
-        if not self.still:
-            frame = seek_to_time(
-                self.container, self.video_stream, self.seek_start_seconds
-            )
+        if not self.still and self.status in (VideoStatus.LOADING,VideoStatus.LOADED, VideoStatus.READY):
+            frame = seek_to_time(self.container, self.video_stream, self.seek_start_seconds)
         else:
             frame = self.current_frame
 
