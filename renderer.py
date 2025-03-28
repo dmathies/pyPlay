@@ -8,6 +8,9 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 
 import sys
 import os
+
+from pygame.locals import *
+
 if sys.version_info >= (3, 9):
     from importlib.resources import files, read_text
 else:
@@ -51,25 +54,31 @@ class Renderer:
         self.current_shader = None
 
         pygame.init()
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK,
+                                        pygame.GL_CONTEXT_PROFILE_ES)
+
         self.window_size = (1024, 640)
         self.screen = pygame.display.set_mode(
-            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
-        )
+            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=0)
         pygame.display.set_caption("GAOS ArtNet Video Player")
 
         glViewport(0, 0, *self.window_size)
         print("GL version:", glGetString(GL_VERSION))
         print(f"Driver {pygame.display.get_driver()}")
 
-        self.clock = pygame.time.Clock()
-        self.VAO = self.setup_geometry()
         self.register_shader_program("default")
         self.register_shader_program("default_framing")
         self.set_shader("default")
+        self.VAO = self.setup_geometry()
         self.src_pts = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
         self.homography_matrix = self.compute_homography_manual(
             self.src_pts, self.src_pts
         ).T.flatten()  # Identity
+
+        self.clock = pygame.time.Clock()
+
         self.set_parameters(
             {
                 "dimmer": 1.0,
@@ -308,55 +317,8 @@ class Renderer:
 
         return shader
 
-    @staticmethod
-    def setup_geometry():
-        # Define a full-screen quad.
-        vertices = np.array(
-            [
-                -1.0,
-                1.0,
-                0.0,
-                0.0,
-                -1.0,
-                -1.0,
-                0.0,
-                1.0,
-                1.0,
-                -1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-                0.0,
-            ],
-            dtype=np.float32,
-        )
 
-        indices = np.array([0, 1, 2, 2, 3, 0], dtype=np.uint32)
-        vao = glGenVertexArrays(1)
-        vbo = glGenBuffers(1)
-        ebo = glGenBuffers(1)
-        glBindVertexArray(vao)
-        glBindBuffer(GL_ARRAY_BUFFER, vbo)
-        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
-        glVertexAttribPointer(
-            0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize, ctypes.c_void_p(0)
-        )
-        glEnableVertexAttribArray(0)
-        glVertexAttribPointer(
-            1,
-            2,
-            GL_FLOAT,
-            GL_FALSE,
-            4 * vertices.itemsize,
-            ctypes.c_void_p(2 * vertices.itemsize),
-        )
-        glEnableVertexAttribArray(1)
-        glBindVertexArray(0)
-        return vao
+
 
     def bind_texture(self, alpha, dimmer, video_data, clamp=GL_CLAMP_TO_BORDER):
         self.set_parameters({"dimmer": dimmer, "alpha": alpha})
@@ -622,3 +584,46 @@ class Renderer:
         U, S, V = np.linalg.svd(A)
         H = V[-1, :].reshape(3, 3)
         return H / H[2, 2]
+
+    @staticmethod
+    def setup_pygame():
+        pygame.init()
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
+        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK,
+                                        pygame.GL_CONTEXT_PROFILE_ES)
+        window_size = (1024, 640)
+        pygame.display.set_mode(window_size, DOUBLEBUF | OPENGL, vsync=0)
+        pygame.display.set_caption("GAOS ArtNet Video Player")
+        glViewport(0, 0, window_size[0], window_size[1])
+        print("GL version:", glGetString(GL_VERSION))
+        print(f"Driver {pygame.display.get_driver()}")
+
+    @staticmethod
+    def setup_geometry():
+        # Define a full-screen quad.
+        vertices = np.array([
+            -1.0, 1.0, 0.0, 0.0,
+            -1.0, -1.0, 0.0, 1.0,
+            1.0, -1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 0.0,
+        ], dtype=np.float32)
+        indices = np.array([0, 1, 2, 2, 3, 0], dtype=np.uint32)
+        VAO = glGenVertexArrays(1)
+        VBO = glGenBuffers(1)
+        EBO = glGenBuffers(1)
+        glBindVertexArray(VAO)
+        glBindBuffer(GL_ARRAY_BUFFER, VBO)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices,
+                     GL_STATIC_DRAW)
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
+                              ctypes.c_void_p(0))
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
+                              ctypes.c_void_p(2 * vertices.itemsize))
+        glEnableVertexAttribArray(1)
+        glBindVertexArray(0)
+        print("VAO, VBO, and EBO created")
+        return VAO

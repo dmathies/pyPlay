@@ -1,3 +1,6 @@
+import socket
+import netifaces
+import ipaddress
 import inspect
 
 def try_convert(value, expected_type):
@@ -39,3 +42,25 @@ def call_method_by_name(obj, method_name, *args, **kwargs):
 
         return None  # conversion failed
 
+
+def get_ip(ip="auto"):
+    if ip == "auto":
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+
+    return ip
+
+def get_broadcast(ip = "auto"):
+    ip = get_ip(ip)
+
+    # Match interface that owns this IP
+    for iface in netifaces.interfaces():
+        addresses = netifaces.ifaddresses(iface)
+        if netifaces.AF_INET in addresses:
+            for addr_info in addresses[netifaces.AF_INET]:
+                if addr_info.get('addr') == ip:
+                    netmask = addr_info.get('netmask')
+                    network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
+                    return str(network.broadcast_address)
+    return None

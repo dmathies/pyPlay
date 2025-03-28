@@ -1,11 +1,11 @@
 import os
+import platform
 import shutil
 
 import numpy as np
 import pygame
 import threading
 
-from pygame.locals import KEYDOWN, K_F11, K_SPACE
 
 from config_manager import ConfigManager
 from cue_engine import CueEngine
@@ -14,16 +14,31 @@ from video_handler import VideoHandler
 from dmx_handler import DMXHandler, DMX_EVENT
 from osc_handler import OSCHandler, OSC_MESSAGE
 from cue_engine import ActiveCue, CUE_EVENT
-from renderer import Renderer
+#from renderer import Renderer
 from qplayer_config import load_qproj
 
 cue_file = "Cues.qproj"
 
+if platform.system() == "Linux":
+    # Force SDL2 to use EGL instead of GLX on X11.
+    print("Linux EGL setup")
+    os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
+    os.environ["PYOPENGL_PLATFORM"]="egl"
+    os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"]="nvidia"
+    os.environ["DISPLAY"]=":0.0"
+
+from pygame.locals import KEYDOWN, K_F11, K_SPACE, DOUBLEBUF, OPENGL
+
+from renderer import Renderer
+
 def main():
+
+
     config = ConfigManager()
     qplayer_config = load_qproj(cue_file)
-    video_handler = VideoHandler()
+
     renderer = Renderer()
+    video_handler = VideoHandler()
 
     cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler)
 

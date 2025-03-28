@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import pygame
 from qplayer_config import *
-from renderer import Renderer
+#from renderer import Renderer
 from video_handler import VideoHandler, VideoData, VideoStatus
 
 CUE_EVENT = pygame.USEREVENT + 3
@@ -15,7 +15,7 @@ class ActiveCue:
         self.alpha = 0.0
         self.dimmer = 1.0
         self.alpha = 0.0
-        self.qid = cue.qid
+        self.qid = str(cue.qid)
         self.cue_start_time = time.time()
         if isinstance(cue, VideoCue):
             self.z_index = cue.zIndex
@@ -58,7 +58,7 @@ class ActiveCue:
 
 class CueEngine:
     def __init__(
-        self, cues: list[CueUnion], renderer: Renderer, video_handler: VideoHandler
+        self, cues: list[CueUnion], renderer, video_handler: VideoHandler
     ):
 
         self.callback = None
@@ -76,8 +76,8 @@ class CueEngine:
 
     def set_cues(self, cues: list[CueUnion]):
         for cue in cues:
-            self.cues[cue.qid] = cue
-            self.qid_list.append(cue.qid)
+            self.cues[str(cue.qid)] = cue
+            self.qid_list.append(str(cue.qid))
 
         # Stop all cues that no longer exist
         for cue in self.active_cues:

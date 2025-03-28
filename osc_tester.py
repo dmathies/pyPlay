@@ -2,6 +2,7 @@ import queue
 import re
 import socket
 import threading
+from time import sleep
 
 import pythonosc
 from pythonosc.osc_message_builder import OscMessageBuilder
@@ -9,21 +10,22 @@ from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 
+from utils import get_ip, get_broadcast
+
 
 class OSCTester:
 
     def __init__(self, ip="127.0.0.1", rx_port=8000, tx_port = 9000, name="Video1"):
         self.ack_queue = queue.Queue()
+
         self.max_retries = 5
         self.timeout = 1.0
         self.chunk_size = 1024
 
-        if ip == "auto":
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-
+        ip = get_ip()
+        print(f"OSC Tester: ip{ip}, rx:{rx_port}, tx:{tx_port}")
         self.ip = ip
+        self.broadcast_addr = get_broadcast(ip)
         self.name = name
         self.rx_port = rx_port
         self.tx_port = tx_port
@@ -33,8 +35,9 @@ class OSCTester:
         BlockingOSCUDPServer.allow_reuse_address = True
         SimpleUDPClient.allow_reuse_address = True
 
-        self.server = BlockingOSCUDPServer((ip, self.rx_port), self.dispatcher)
-        self.client = SimpleUDPClient(ip, self.tx_port)
+        self.server = BlockingOSCUDPServer(("0.0.0.0", self.rx_port), self.dispatcher)
+
+        self.client = SimpleUDPClient(address=get_broadcast(ip), port=self.tx_port, allow_broadcast=True)
 
     def main(self):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -58,10 +61,11 @@ class OSCTester:
         msg.add_arg(total_chunks)
         msg.add_arg(chunk_data, arg_type='b')
         self.client.send(msg.build())
+        # sleep(1)
 
     def send_file(self):
         self.dispatcher.map("/qplayer/remote/update-show-ack", self.ack_handler)
-        with open("../Cues.qproj", "rb") as f:
+        with open("Cues.qproj", "rb") as f:
             data = f.read()
 
         total_chunks = (len(data) + self.chunk_size - 1) // self.chunk_size
@@ -72,20 +76,24 @@ class OSCTester:
 
             while retries < self.max_retries:
                 self._send_chunk(i, total_chunks, chunk)
-                print(f"Sent chunk {i+1}/{total_chunks}, waiting for ACK...")
+                # print(f"Sent chunk {i+1}/{total_chunks}, waiting for ACK...")
 
                 try:
-                    ack_index = self.ack_queue.get(timeout=self.timeout)
-                    if ack_index == i:
-                        print(f"ACK received for chunk {i}")
-                        break
+                    while self.ack_queue.get(timeout=self.timeout) != i:
+                        pass
+                    # print(f"ACK received for chunk {i}")
                 except queue.Empty:
                     retries += 1
                     print(f"Retrying chunk {i}, attempt {retries}")
+                break
+
 
             if retries == self.max_retries:
                 print(f"Failed to send chunk {i} after {self.max_retries} retries.")
+
+                self.dispatcher.unmap("/qplayer/remote/update-show-ack", self.ack_handler)
                 return False
+
         print("File sent successfully.")
         self.dispatcher.unmap("/qplayer/remote/update-show-ack", self.ack_handler)
 
@@ -93,7 +101,7 @@ class OSCTester:
 
 
     def ack_handler(self, address:str, *args):
-        print (f"OSC ACK Message Received: {address}, {args}")
+        # print (f"OSC ACK Message Received: {address}, {args}")
         if len(args) ==2 and args[0] == self.name:
             self.ack_queue.put(int(args[1]))
 
