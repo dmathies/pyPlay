@@ -139,33 +139,35 @@ class CueEngine:
 
                 match.cue_start_time = time.time()
 
-                if cue.startTime:
+                if getattr(cue, 'startTime', False):
                     match.media_startTime = cue.startTime
-                if cue.duration:
+                if getattr(cue, 'duration', False):
                     match.media_duration = cue.duration
-                if cue.volume:
+                if getattr(cue, 'volume', False):
                     match.media_volume = cue.volume
-                if cue.fadeIn:
+                if getattr(cue, 'fadeIn', False):
                     match.media_fadeIn = cue.fadeIn
-                if cue.fadeOut:
+                if getattr(cue, 'fadeOut', False):
                     match.media_fadeOut = cue.fadeOut
-                if cue.fadeType:
+                if getattr(cue, 'fadeType', False):
                     match.media_fadeType = cue.fadeType
+                if getattr(cue, 'loopMode', False):
+                    match.media_loopMode = cue.loopMode
+                if getattr(cue, 'loopCount', False):
+                    match.media_loopCount = cue.loopCount
 
-                match.media_loopMode = cue.loopMode
-                match.media_loopCount = cue.loopCount
                 match.loop_counter = 0
                 match.state_reported = None
 
         else:
-            if isinstance(cue, VideoCue):
+            if isinstance(cue, VideoCue) or isinstance(cue, VideoFraming):
                 self.begin_new_playback(cue, paused=paused)
 
-            elif isinstance(cue, VideoFraming):
-                if cue.framing:
-                    self.renderer.set_framing(cue.framing)
-                if cue.corners:
-                    self.renderer.set_corners(cue.corners)
+            # elif isinstance(cue, VideoFraming):
+            #     if cue.framing:
+            #         self.renderer.set_framing(cue.framing)
+            #     if cue.corners:
+            #         self.renderer.set_corners(cue.corners)
 
             elif isinstance(cue, StopCue):
                 match = next( (q for q in self.active_cues if q.qid == cue.stopQid), None )
@@ -183,26 +185,28 @@ class CueEngine:
             active_cue.media_startTime = cue.startTime
         if cue.duration:
             active_cue.media_duration = cue.duration
-        if cue.volume:
-            active_cue.media_volume = cue.volume
-        if cue.fadeIn:
-            active_cue.media_fadeIn = cue.fadeIn
-        if cue.fadeOut:
-            active_cue.media_fadeOut = cue.fadeOut
-        if cue.fadeType:
-            active_cue.media_fadeType = cue.fadeType
+        if getattr(cue, 'volume', False):
+            active_cue.media_volume = getattr(cue, 'volume', 0)
+        if getattr(cue, 'fadeIn', False):
+            active_cue.media_fadeIn = getattr(cue, 'fadeIn', 0)
+        if getattr(cue, 'fadeOut', False):
+            active_cue.media_fadeOut = getattr(cue, 'fadeOut', 0)
+        if getattr(cue, 'fadeType', False):
+            active_cue.media_fadeType = getattr(cue, 'fadeType', FadeType.Linear)
         active_cue.media_loopMode = cue.loopMode
         active_cue.media_loopCount = cue.loopCount
         active_cue.paused = paused
         active_cue.pause_time = active_cue.cue_start_time
 
-        self.video_handler.load_video_async(
-            cue.path, active_cue.video_data
-        )
-        if cue.alphaPath:
+        if isinstance(cue, VideoCue):
             self.video_handler.load_video_async(
-                cue.alphaPath, active_cue.alpha_video_data
+                cue.path, active_cue.video_data
             )
+            if cue.alphaPath:
+                self.video_handler.load_video_async(
+                    cue.alphaPath, active_cue.alpha_video_data
+                )
+
         pygame.event.post(pygame.event.Event(CUE_EVENT, data=active_cue))
 
     def handle_stop(self, match: ActiveCue, stop_mode: StopMode, fade_type: FadeType,  fade_out_time: float, loop_mode: LoopMode, loop_count: int):

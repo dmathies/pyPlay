@@ -32,8 +32,6 @@ class OSCHandler:
 
         broadcast_addr = utils.get_broadcast(ip=self.ip)
         self.client = udp_client.SimpleUDPClient(address=broadcast_addr, port=tx_port, allow_broadcast=True)
-        # self.client._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
 
         self.last_update_time = time.time()
         self.received_showfile_chunks = {}
@@ -42,7 +40,7 @@ class OSCHandler:
         print (f"OSC Message Received: {address}, {args}")
 
     def qplayer_handler(self, client_address: [str, int], address:str, *args):
-        # print(f"OSC Message: {address} {args}")
+        print(f"OSC Message: {address} {args}")
         if len(args) > 0:
             if args[0] == self.name:
                 # For me

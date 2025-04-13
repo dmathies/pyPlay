@@ -18,6 +18,8 @@ uniform sampler2D video2U;
 uniform sampler2D video2V;
 
 uniform float alpha; // Blending factor between video1 and video2
+uniform int alphaMode; // Use alpha as alpha or use alpha for gradient Mask progression
+uniform float alphaSoftness; // for gradient Mask
 uniform float dimmer; // Dimmer
 uniform mat3 homographyMatrix;
 
@@ -59,7 +61,7 @@ vec3 getVideo1Color(vec2 finalTexCoord) {
         vec2 uv = texture(video1UV, finalTexCoord).rg;
         vec3 color = NV12ToRGB(y, uv);
         return color;
-    } else {
+    } else if(video1Format == 2) {
         float y = texture(video1Y, finalTexCoord).r;
         // Since U and V textures are half size, scale texture coordinates.
         vec2 uvCoords = finalTexCoord;
@@ -67,6 +69,9 @@ vec3 getVideo1Color(vec2 finalTexCoord) {
         float v = texture(video1V, uvCoords).r;
         vec3 color = YUV420pToRGB(y, u, v);
         return color;
+    } else {
+        float y = texture(video1Y, finalTexCoord).r;
+        return vec3(y, y, y);
     }
 }
 
@@ -77,12 +82,15 @@ vec3 getVideo2Color(vec2 finalTexCoord) {
         float y = texture(video2Y, finalTexCoord).r;
         vec2 uv = texture(video2UV, finalTexCoord).rg;
         return NV12ToRGB(y, uv);
-    } else {
+    } else if(video2Format == 2) {
         float y = texture(video2Y, finalTexCoord).r;
         vec2 uvCoords = finalTexCoord;
         float u = texture(video2U, uvCoords).r;
         float v = texture(video2V, uvCoords).r;
         return YUV420pToRGB(y, u, v);
+    } else {
+        float y = texture(video2Y, finalTexCoord).r;
+        return vec3(y, y, y);
     }
 }
 
@@ -105,7 +113,25 @@ void main() {
 
     vec3 color1 = getVideo1Color(finalTexCoord);
     vec3 color2 = getVideo2Color(finalTexCoord);
-    vec4 color = dimmer * vec4(color1, alpha);
+    vec4 color;
+    switch (alphaMode)
+    {
+        case 0:
+            color = dimmer * vec4(color1, alpha);
+            break;
+        case 1:
+            color = dimmer * vec4(mix(color1, color2, alpha), 1.0);
+        break;
+        default:
+            //float new_alpha = smoothstep(alpha - alphaSoftness, alpha + alphaSoftness, color2.r);
+            float new_alpha = smoothstep(color2.r, color2.r + alphaSoftness, alpha*(1.+alphaSoftness));
+            color = dimmer * vec4(color1, new_alpha);
+//            float t =  clamp(color2.r - (alpha * (1.0 + (2.0 * alphaSoftness))) - alphaSoftness, 0.0, 1.0);
+//            float t = clamp((color2.r - (alpha - alphaSoftness)) / (2.0 * alphaSoftness), 0.0, 1.0);
+//            float new_alpha = smoothstep(0.0, 1.0, t);
+//            color = dimmer * vec4(color1, 1.0 - new_alpha);
+        break;
+    }
 
     // Apply brightness
     color.rgb += brightness;

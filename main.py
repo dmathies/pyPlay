@@ -51,6 +51,7 @@ def main():
     running = True
     cue_engine.register_callback(osc_handler.osc_tick, args=osc_handler)
 
+    print ("pyPlay Started...")
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

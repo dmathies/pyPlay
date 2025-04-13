@@ -6,6 +6,7 @@ class VideoFrameFormat:
     RGB = 0
     NV12 = 1
     YUVJ420p = 2
+    GRAY = 3
 
 
 class VideoStatus:
@@ -85,9 +86,10 @@ def load_video(path, video_data=VideoData()):
 
         if video_stream.format.is_rgb:
             frame_pix_format = VideoFrameFormat.RGB
-        else:
-            if video_stream.format.name == "yuvj420p":
-                frame_pix_format = VideoFrameFormat.YUVJ420p
+        elif video_stream.format.name == "gray":
+            frame_pix_format = VideoFrameFormat.GRAY
+        elif video_stream.format.name == "yuvj420p":
+            frame_pix_format = VideoFrameFormat.YUVJ420p
 
         gen = container.decode(video=0)
 
