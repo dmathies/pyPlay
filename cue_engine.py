@@ -37,6 +37,8 @@ class ActiveCue:
         self.paused = False
         self.pause_time = None
         self.state_reported = None
+        self.shader_parameters = None
+
 
     def pause(self):
         self.paused = True
@@ -49,10 +51,20 @@ class ActiveCue:
 
     def position(self):
         if self.video_data.status == VideoStatus.READY and self.video_data.current_frame is not None:
-            pts = self.video_data.current_frame.pts
-            time_base = self.video_data.current_frame.time_base
-            if pts is not None and time_base is not None:
-                return float(pts * time_base)
+            if self.video_data.still:
+                elapsed = time.time() - self.cue_start_time
+                if self.paused:
+                    elapsed = self.pause_time - self.cue_start_time
+
+                if elapsed < self.media_fadeIn:
+                    return elapsed
+                else:
+                    return self.media_fadeIn
+            else:
+                pts = self.video_data.current_frame.pts
+                time_base = self.video_data.current_frame.time_base
+                if pts is not None and time_base is not None:
+                    return float(pts * time_base)
 
         return 0.0
 
@@ -155,19 +167,15 @@ class CueEngine:
                     match.media_loopMode = cue.loopMode
                 if getattr(cue, 'loopCount', False):
                     match.media_loopCount = cue.loopCount
+                if getattr(cue, 'uniforms', False):
+                    match.shader_parameters = cue.uniforms
 
                 match.loop_counter = 0
                 match.state_reported = None
 
         else:
-            if isinstance(cue, VideoCue) or isinstance(cue, VideoFraming):
+            if isinstance(cue, VideoCue) or isinstance(cue, VideoFraming) or isinstance(cue, ShaderParams):
                 self.begin_new_playback(cue, paused=paused)
-
-            # elif isinstance(cue, VideoFraming):
-            #     if cue.framing:
-            #         self.renderer.set_framing(cue.framing)
-            #     if cue.corners:
-            #         self.renderer.set_corners(cue.corners)
 
             elif isinstance(cue, StopCue):
                 match = next( (q for q in self.active_cues if q.qid == cue.stopQid), None )
@@ -177,22 +185,19 @@ class CueEngine:
 
     def begin_new_playback(self, cue: CueUnion, paused:bool = False):
         active_cue = ActiveCue(cue)
-        if cue.startTime:
+        if getattr(cue, 'startTime', False):
             active_cue.video_data.seek_start_seconds = cue.startTime.total_seconds()
 
         # Local copies can be manipulated by events.
-        if cue.startTime:
+        if getattr(cue, 'startTime', False):
             active_cue.media_startTime = cue.startTime
-        if cue.duration:
+        if getattr(cue, 'duration', False):
             active_cue.media_duration = cue.duration
-        if getattr(cue, 'volume', False):
-            active_cue.media_volume = getattr(cue, 'volume', 0)
-        if getattr(cue, 'fadeIn', False):
-            active_cue.media_fadeIn = getattr(cue, 'fadeIn', 0)
-        if getattr(cue, 'fadeOut', False):
-            active_cue.media_fadeOut = getattr(cue, 'fadeOut', 0)
-        if getattr(cue, 'fadeType', False):
-            active_cue.media_fadeType = getattr(cue, 'fadeType', FadeType.Linear)
+
+        active_cue.media_volume = getattr(cue, 'volume', 0)
+        active_cue.media_fadeIn = getattr(cue, 'fadeIn', 0)
+        active_cue.media_fadeOut = getattr(cue, 'fadeOut', 0)
+        active_cue.media_fadeType = getattr(cue, 'fadeType', FadeType.Linear)
         active_cue.media_loopMode = cue.loopMode
         active_cue.media_loopCount = cue.loopCount
         active_cue.paused = paused
@@ -270,7 +275,50 @@ class CueEngine:
                         active_cue.cue_start_time = now
                         active_cue.media_fadeIn = 0
                         active_cue.video_data.seek_start()
+            if isinstance(active_cue.cue, ShaderParams):
+
+                match = next((q for q in self.active_cues if q.qid == active_cue.cue.videoQid), None)
+                if match:
+                    alpha = active_cue.alpha
+                    if active_cue.cue.fadeType == FadeType.Smooth:
+                        alpha = self.smooth_step(alpha)
+
+                    if not active_cue.shader_parameters:
+                        # Make a copy of the current values
+                        if match.shader_parameters:
+                            active_cue.shader_parameters = match.shader_parameters.copy()
+                        else:
+                            active_cue.shader_parameters = {}
+
+                    if active_cue.cue.uniforms:
+                        old = active_cue.shader_parameters
+                        new = active_cue.cue.uniforms
+                        interpolated = self.interpolate_dicts(old, new, alpha)
+                        match.shader_parameters = interpolated
+                        # print(f"Interpolated shader parameters: {match.shader_parameters}")
+
+                    if alpha==1.0:
+                        active_cue.complete = True
+                else:
+                    active_cue.complete = True
 
         if self.callback:
             self.callback(self.active_cues)
 
+
+    @staticmethod
+    def interpolate_dicts(old, new, alpha):
+        keys = set(old) | set(new)  # Union of keys
+        interp = {}
+
+        for key in keys:
+            old_val = old.get(key, 0.0)
+            new_val = new.get(key, 0.0)
+            interp[key] = (1 - alpha) * old_val + alpha * new_val
+
+        return interp
+
+
+    @staticmethod
+    def smooth_step(alpha):
+        return alpha * alpha * (3 - 2 * alpha)

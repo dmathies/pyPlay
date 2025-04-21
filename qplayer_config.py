@@ -15,6 +15,7 @@ class CueType(StrEnum):
     VolumeCue = "VolumeCue"
     VideoCue = "VideoCue"
     VideoFraming = "VideoFraming"
+    ShaderParams = "ShaderParams"
 
 
 class AlphaMode(StrEnum):
@@ -44,7 +45,6 @@ class StopMode(StrEnum):
 
 class FadeType(StrEnum):
     Linear = "Linear"
-    Exponential = "Exponential"
     Smooth = "Smooth"
 
 
@@ -149,10 +149,7 @@ class VolumeCue(Cue):
 
 @dataclass
 class VideoFraming(Cue):
-    startTime: Optional[timedelta] = None
-    duration: Optional[timedelta] = None
     fadeIn: Optional[float] = None
-    fadeOut: Optional[float] = None
     fadeType: Optional[FadeType] = None
     corners: Optional[List[Point]] = None
     framing: Optional[List[FramingShutter]] = None
@@ -179,6 +176,14 @@ class VideoCue(Cue):
     scale: Optional[float] = 1.0
     rotation: Optional[float] = 0.0
     offset: Optional[Point] = None
+    uniforms: Optional[dict] = None
+
+@dataclass
+class ShaderParams(Cue):
+    videoQid: str
+    fadeIn: Optional[float] = None
+    fadeType: Optional[FadeType] = None
+    uniforms: Optional[dict] = None
 
 
 CueUnion = Union[
@@ -190,6 +195,7 @@ CueUnion = Union[
     VolumeCue,
     VideoCue,
     VideoFraming,
+    ShaderParams,
 ]
 
 
@@ -300,20 +306,26 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             scale=data.get("scale", 1.0),
             rotation=data.get("rotation", 0.0),
             offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
+            uniforms=data.get("uniforms", None),
         )
     elif cue_type == CueType.VideoFraming:
         return VideoFraming(
             **base,
-            startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
-            duration=parse_timecode(data.get("duration", "00:00:00.00")),
             fadeIn=data.get("fadeIn", 0.0),
-            fadeOut=data.get("fadeOut", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
             corners=[
                 parse_point(p)
                 for p in data.get("corners", [[0, 0], [1, 0], [1, 1], [0, 1]])
             ],
             framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])],
+        )
+    elif cue_type == CueType.ShaderParams:
+        return ShaderParams(
+            **base,
+            videoQid=str(data.get("videoQid")),
+            fadeIn=data.get("fadeIn", 0.0),
+            fadeType=parse_enum(FadeType, data.get("fadeType")),
+            uniforms=data.get("uniforms", None)
         )
     elif cue_type == CueType.GroupCue:
         return GroupCue(**base)

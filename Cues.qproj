@@ -52,7 +52,7 @@
       "startTime": "00:00:00",
       "duration": "00:00:00",
       "volume": 1,
-      "fadeIn": 1,
+      "fadeIn": 3,
       "fadeOut": 1,
       "fadeType": 0,
       "type": 3,
@@ -75,7 +75,30 @@
       "enabled": true,
       "delay": "00:00:00",
       "loopMode": 1,
-      "loopCount": 0
+      "loopCount": 0,
+      "uniforms": {
+        "first": 1.0,
+        "second": 1.0,
+        "third": 1.0
+      }
+    },
+    {
+      "$type": "ShaderParams",
+      "fadeIn": 3,
+      "fadeType": 0,
+      "videoQid": "101",
+      "qid": "101.1",
+      "name": "Params1",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "loopMode": 1,
+      "loopCount": 0,
+      "uniforms": {
+        "first": 10.0,
+        "second": -1.0,
+        "third": 1.0
+      }
     },
     {
       "$type": "VideoCue",
@@ -90,7 +113,7 @@
       "fadeOut": 1,
       "fadeType": 0,
       "type": 3,
-      "qid": "101.1",
+      "qid": "101.2",
       "parent": null,
       "colour": {
         "R": 0,

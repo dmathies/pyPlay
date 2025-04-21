@@ -87,8 +87,8 @@ class OSCHandler:
     def client_beacon(self):
 
         while True:
-            self.client.send_message("/qplayer/remote/discovery", self.name)
-            print(f"Beacon: {self.name}")
+            # self.client.send_message("/qplayer/remote/discovery", self.name)
+            # print(f"Beacon: {self.name}")
             time.sleep(1)
 
     def start_server(self):
