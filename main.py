@@ -14,7 +14,8 @@ from video_handler import VideoHandler
 from dmx_handler import DMXHandler, DMX_EVENT
 from osc_handler import OSCHandler, OSC_MESSAGE
 from cue_engine import ActiveCue, CUE_EVENT
-#from renderer import Renderer
+
+# from renderer import Renderer
 from qplayer_config import load_qproj
 
 cue_file = "Cues.qproj"
@@ -23,16 +24,16 @@ if platform.system() == "Linux":
     # Force SDL2 to use EGL instead of GLX on X11.
     print("Linux EGL setup")
     os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
-    os.environ["PYOPENGL_PLATFORM"]="egl"
-    os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"]="nvidia"
-    os.environ["DISPLAY"]=":0.0"
+    os.environ["PYOPENGL_PLATFORM"] = "egl"
+    os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"] = "nvidia"
+    os.environ["DISPLAY"] = ":0.0"
 
 from pygame.locals import KEYDOWN, K_F11, K_SPACE, DOUBLEBUF, OPENGL
 
 from renderer import Renderer
 
-def main():
 
+def main():
 
     config = ConfigManager()
     qplayer_config = load_qproj(cue_file)
@@ -43,7 +44,12 @@ def main():
     cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler)
 
     dmx_handler = DMXHandler(config.get_dmx_config(), config.get_ip_address())
-    osc_handler = OSCHandler(ip=config.get_ip_address(), rx_port=config.get_osc_rx_port(), tx_port=config.get_osc_tx_port(), name=config.get_osc_name())
+    osc_handler = OSCHandler(
+        ip=config.get_ip_address(),
+        rx_port=config.get_osc_rx_port(),
+        tx_port=config.get_osc_tx_port(),
+        name=config.get_osc_name(),
+    )
 
     # threading.Thread(target=dmx_handler.start_listening, daemon=True).start()
     threading.Thread(target=osc_handler.start_server, daemon=True).start()
@@ -51,7 +57,7 @@ def main():
     running = True
     cue_engine.register_callback(osc_handler.osc_tick, args=osc_handler)
 
-    print ("pyPlay Started...")
+    print("pyPlay Started...")
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -90,7 +96,9 @@ def main():
 
                         with open(cue_file, "wb") as f:
                             f.write(cue_data)
-                            print(f"Successfully wrote {len(cue_data)} bytes to {cue_file}")
+                            print(
+                                f"Successfully wrote {len(cue_data)} bytes to {cue_file}"
+                            )
 
                         qplayer_config = load_qproj(cue_file)
                         cue_engine.set_cues(qplayer_config.cues)
@@ -98,12 +106,15 @@ def main():
                     except Exception as e:
                         print(f"Error during processing cue_file {e}")
                 else:
-                    call_method_by_name(cue_engine, event.data["command"],*event.data["args"])
+                    call_method_by_name(
+                        cue_engine, event.data["command"], *event.data["args"]
+                    )
 
         renderer.render_frame(cue_engine.active_cues)
         cue_engine.tick()
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()

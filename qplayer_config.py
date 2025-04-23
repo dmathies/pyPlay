@@ -14,8 +14,8 @@ class CueType(StrEnum):
     StopCue = "StopCue"
     VolumeCue = "VolumeCue"
     VideoCue = "VideoCue"
-    VideoFraming = "VideoFraming"
-    ShaderParams = "ShaderParams"
+    VideoFramingCue = "VideoFramingCue"
+    ShaderParamsCue = "ShaderParamsCue"
 
 
 class AlphaMode(StrEnum):
@@ -45,7 +45,9 @@ class StopMode(StrEnum):
 
 class FadeType(StrEnum):
     Linear = "Linear"
-    Smooth = "Smooth"
+    SCurve = "SCurve"
+    Square = "Square"
+    InverseSquare = "InverseSquare"
 
 
 # === Timecode Utilities ===
@@ -149,8 +151,8 @@ class VolumeCue(Cue):
 
 @dataclass
 class VideoFraming(Cue):
-    fadeIn: Optional[float] = None
-    fadeType: Optional[FadeType] = None
+    fadeTime: float = 0
+    fadeType: FadeType = FadeType.Linear
     corners: Optional[List[Point]] = None
     framing: Optional[List[FramingShutter]] = None
 
@@ -176,14 +178,15 @@ class VideoCue(Cue):
     scale: Optional[float] = 1.0
     rotation: Optional[float] = 0.0
     offset: Optional[Point] = None
-    uniforms: Optional[dict] = None
+    uniforms: Optional[dict[str, float]] = None
+
 
 @dataclass
 class ShaderParams(Cue):
     videoQid: str
-    fadeIn: Optional[float] = None
-    fadeType: Optional[FadeType] = None
-    uniforms: Optional[dict] = None
+    fadeTime: float = 0
+    fadeType: FadeType = FadeType.Linear
+    uniforms: Optional[dict[str, float]] = None
 
 
 CueUnion = Union[
@@ -193,6 +196,13 @@ CueUnion = Union[
     TimeCodeCue,
     StopCue,
     VolumeCue,
+    VideoCue,
+    VideoFraming,
+    ShaderParams,
+]
+
+
+VideoCueUnion = Union[
     VideoCue,
     VideoFraming,
     ShaderParams,
@@ -308,10 +318,10 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
             uniforms=data.get("uniforms", None),
         )
-    elif cue_type == CueType.VideoFraming:
+    elif cue_type == CueType.VideoFramingCue:
         return VideoFraming(
             **base,
-            fadeIn=data.get("fadeIn", 0.0),
+            fadeTime=data.get("fadeIn", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
             corners=[
                 parse_point(p)
@@ -319,13 +329,13 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             ],
             framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])],
         )
-    elif cue_type == CueType.ShaderParams:
+    elif cue_type == CueType.ShaderParamsCue:
         return ShaderParams(
             **base,
             videoQid=str(data.get("videoQid")),
-            fadeIn=data.get("fadeIn", 0.0),
+            fadeTime=data.get("fadeIn", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
-            uniforms=data.get("uniforms", None)
+            uniforms=data.get("uniforms", None),
         )
     elif cue_type == CueType.GroupCue:
         return GroupCue(**base)

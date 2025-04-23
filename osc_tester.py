@@ -15,7 +15,7 @@ from utils import get_ip, get_broadcast
 
 class OSCTester:
 
-    def __init__(self, ip="127.0.0.1", rx_port=8000, tx_port = 9000, name="Video1"):
+    def __init__(self, ip="127.0.0.1", rx_port=8000, tx_port=9000, name="Video1"):
         self.ack_queue = queue.Queue()
 
         self.max_retries = 5
@@ -37,12 +37,14 @@ class OSCTester:
 
         self.server = BlockingOSCUDPServer(("0.0.0.0", self.rx_port), self.dispatcher)
 
-        self.client = SimpleUDPClient(address=get_broadcast(ip), port=self.tx_port, allow_broadcast=True)
+        self.client = SimpleUDPClient(
+            address=get_broadcast(ip), port=self.tx_port, allow_broadcast=True
+        )
 
     def main(self):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         while True:
-            print('Command> ', end='')
+            print("Command> ", end="")
             input1 = re.split(r"[ ,|;]\s*", input())
             command = input1[0].strip()
             if command == "exit":
@@ -51,15 +53,16 @@ class OSCTester:
             if command == "update-show":
                 self.send_file()
             else:
-                self.client.send_message(f"/qplayer/remote/{command}", [self.name]+args)
-
+                self.client.send_message(
+                    f"/qplayer/remote/{command}", [self.name] + args
+                )
 
     def _send_chunk(self, index, total_chunks, chunk_data):
         msg = OscMessageBuilder(address="/qplayer/remote/update-show")
         msg.add_arg(self.name)
         msg.add_arg(index)
         msg.add_arg(total_chunks)
-        msg.add_arg(chunk_data, arg_type='b')
+        msg.add_arg(chunk_data, arg_type="b")
         self.client.send(msg.build())
         # sleep(1)
 
@@ -71,7 +74,7 @@ class OSCTester:
         total_chunks = (len(data) + self.chunk_size - 1) // self.chunk_size
 
         for i in range(total_chunks):
-            chunk = data[i*self.chunk_size:(i+1)*self.chunk_size]
+            chunk = data[i * self.chunk_size : (i + 1) * self.chunk_size]
             retries = 0
 
             while retries < self.max_retries:
@@ -87,11 +90,12 @@ class OSCTester:
                     print(f"Retrying chunk {i}, attempt {retries}")
                 break
 
-
             if retries == self.max_retries:
                 print(f"Failed to send chunk {i} after {self.max_retries} retries.")
 
-                self.dispatcher.unmap("/qplayer/remote/update-show-ack", self.ack_handler)
+                self.dispatcher.unmap(
+                    "/qplayer/remote/update-show-ack", self.ack_handler
+                )
                 return False
 
         print("File sent successfully.")
@@ -99,14 +103,13 @@ class OSCTester:
 
         return True
 
-
-    def ack_handler(self, address:str, *args):
+    def ack_handler(self, address: str, *args):
         # print (f"OSC ACK Message Received: {address}, {args}")
-        if len(args) ==2 and args[0] == self.name:
+        if len(args) == 2 and args[0] == self.name:
             self.ack_queue.put(int(args[1]))
 
-    def default_handler(self, address:str, *args):
-        print (f"OSC Message Received: {address}, {args}")
+    def default_handler(self, address: str, *args):
+        print(f"OSC Message Received: {address}, {args}")
 
 
 if __name__ == "__main__":
