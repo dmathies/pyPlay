@@ -32,6 +32,9 @@ class OSCHandler:
 
         broadcast_addr = utils.get_broadcast(ip=self.ip)
         self.client = udp_client.SimpleUDPClient(address=broadcast_addr, port=tx_port, allow_broadcast=True)
+        # self.client._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+        print(f"Connected to OSC on {ip} (tx:{tx_port}) (rx:{rx_port})")
 
         self.last_update_time = time.time()
         self.received_showfile_chunks = {}
@@ -39,7 +42,7 @@ class OSCHandler:
     def default_handler(self, address:str, *args):
         print (f"OSC Message Received: {address}, {args}")
 
-    def qplayer_handler(self, client_address: [str, int], address:str, *args):
+    def qplayer_handler(self, client_address: list[str, int], address:str, *args):
         print(f"OSC Message: {address} {args}")
         if len(args) > 0:
             if args[0] == self.name:
@@ -58,7 +61,7 @@ class OSCHandler:
                         if len(args) == 4:
                             self.handle_showfile(client_address, int(args[1]), int(args[2]), args[3])
 
-    def handle_showfile(self, client_address: [str, int], block_number: int, total_blocks: int, blob: bytes):
+    def handle_showfile(self, client_address: list[str, int], block_number: int, total_blocks: int, blob: bytes):
 
         self.received_showfile_chunks[block_number] = blob
 
@@ -95,7 +98,7 @@ class OSCHandler:
         self.start_client_discovery()
         self.server.serve_forever()
 
-    def osc_tick(self, cues:[ActiveCue]):
+    def osc_tick(self, cues:list[ActiveCue]):
 
         periodic_report = False
 
