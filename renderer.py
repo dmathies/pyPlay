@@ -19,7 +19,7 @@ else:
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cue_engine import ActiveCue
-from qplayer_config import FramingShutter, Point, VideoCue, VideoFraming, FadeType, AlphaMode
+from qplayer_config import FramingShutter, Point, VideoCue, VideoFraming, FadeType, AlphaMode, ShaderParams
 from video_handler import VideoStatus, VideoHandler, VideoData, VideoFrameFormat
 
 TEXTURE_UNIT_LOOKUP = [
@@ -128,12 +128,18 @@ class Renderer:
 
                 if active_cue.alpha_video_data.status == VideoStatus.EMPTY:
                     if active_cue.video_data.status == VideoStatus.READY:
+                        self.set_shader(active_cue.cue.shader)
+                        if active_cue.shader_parameters:
+                            self.set_parameters(active_cue.shader_parameters)
                         self.draw_texture(active_cue.video_data, active_cue.alpha)
                 else:
                     if (
                         active_cue.video_data.status == VideoStatus.READY
                         and active_cue.alpha_video_data.status == VideoStatus.READY
                     ):
+                        self.set_shader(active_cue.cue.shader)
+                        if active_cue.shader_parameters:
+                            self.set_parameters(active_cue.shader_parameters)
                         self.draw_texture(
                             active_cue.video_data,
                             active_cue.alpha,
@@ -174,6 +180,7 @@ class Renderer:
         pygame.display.flip()
 
         self.clock.tick(30)
+
 
     @staticmethod
     def smooth_step(alpha):
