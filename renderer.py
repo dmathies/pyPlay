@@ -87,8 +87,8 @@ class Renderer:
         self.register_shader_program("default_framing")
         self.set_shader("default")
         self.VAO = self.setup_geometry()
-        self.src_pts = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
-        self.set_corners([Point(0, 0), Point(1, 0), Point(1, 1), Point(0, 1)], 1.0)
+        self.src_pts = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
+        self.set_corners([Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)], 1.0)
 
         self.clock = pygame.time.Clock()
 
@@ -103,6 +103,7 @@ class Renderer:
                 "contrast": 1.0,
                 "gamma": 1.0,
                 "homographyMatrix": self.homography_matrix,
+                "resolution": self.window_size
             }
         )
 
@@ -148,6 +149,11 @@ class Renderer:
                         self.set_shader(active_cue.cue.shader)
                         if active_cue.shader_parameters:
                             self.set_parameters(active_cue.shader_parameters)
+                        self.set_parameters({
+                            "resolution": self.window_size,
+                            "time": self.clock.get_time()/1000,
+                            "homographyMatrix": self.homography_matrix
+                        })
                         self.draw_texture(active_cue.video_data, active_cue.alpha)
                 else:
                     if (
@@ -157,6 +163,11 @@ class Renderer:
                         self.set_shader(active_cue.cue.shader)
                         if active_cue.shader_parameters:
                             self.set_parameters(active_cue.shader_parameters)
+                        self.set_parameters({
+                            "resolution": self.window_size,
+                            "time": self.clock.get_time()/1000,
+                            "homographyMatrix": self.homography_matrix
+                        })
                         self.draw_texture(
                             active_cue.video_data,
                             active_cue.alpha,
@@ -207,7 +218,7 @@ class Renderer:
         video: VideoData,
         alpha: float,
         alpha_video: VideoData | None = None,
-        alphaMode=AlphaMode.Alpha,
+        alphaMode=AlphaMode.Opaque,
         alphaSoftness=0.0,
     ):
         glBindVertexArray(self.VAO)
@@ -314,6 +325,8 @@ class Renderer:
                 )
                 value = parameters.get(parameter)
 
+                # print(f"Set {parameter} to {value} ({uniform_type})")
+
                 if uniform_type == GL_FLOAT:
                     glUniform1f(location, float(value))
                 elif uniform_type == GL_FLOAT_VEC2:
@@ -350,6 +363,14 @@ class Renderer:
                     )
 
     def set_shader(self, shader_name):
+        if self.current_shader == shader_name:
+            return
+
+        if shader_name not in self.SHADERS:
+            self.current_shader = "default"
+            glUseProgram(self.SHADERS["default"]["shader"])
+            return
+
         self.current_shader = shader_name
         glUseProgram(self.SHADERS[shader_name]["shader"])
 
@@ -719,6 +740,9 @@ class Renderer:
             u, v = dst[i][0], dst[i][1]
             a.append([-mx, -y, -1, 0, 0, 0, mx * u, y * u, u])
             a.append([0, 0, 0, -mx, -y, -1, mx * v, y * v, v])
+
+        # Swap the last two items so that the points go from LR reading-order to clockwise
+        a[2], a[3] = a[3], a[2]
 
         a = np.array(a)
         u, s, v = np.linalg.svd(a)

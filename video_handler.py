@@ -1,4 +1,6 @@
+from typing import Iterator, Optional
 import av
+from av.container import InputContainer, OutputContainer
 import threading
 
 
@@ -18,10 +20,10 @@ class VideoStatus:
 
 class VideoData:
     def __init__(self):
-        self.container = None
-        self.video_stream = None
-        self.gen = None
-        self.frame_format = None
+        self.container: Optional[InputContainer | OutputContainer] = None
+        self.video_stream: av.VideoStream | None = None
+        self.gen: Optional[Iterator[av.VideoFrame]] = None
+        self.frame_format: Optional[int] = None
         self.width = 0
         self.height = 0
         self.textures = {}

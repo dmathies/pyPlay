@@ -116,9 +116,8 @@ class OSCHandler:
         threading.Thread(target=self.client_beacon, daemon=True).start()
 
     def client_beacon(self):
-
         while True:
-            # self.client.send_message("/qplayer/remote/discovery", self.name)
+            self.client.send_message("/qplayer/remote/discovery", self.name)
             # print(f"Beacon: {self.name}")
             time.sleep(1)
 
@@ -143,6 +142,7 @@ class OSCHandler:
                 cue_state = 4
             if active_cue.complete:
                 cue_state = 0
+                current_time = 0
 
             if cue_state != active_cue.state_reported or (
                 periodic_report and not (cue_state == 4 or active_cue.video_data.still)

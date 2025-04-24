@@ -19,17 +19,23 @@ class CueType(StrEnum):
 
 
 class AlphaMode(StrEnum):
-    Alpha = "Alpha"
-    Mix = "Mix"
-    GradientWipe = "GradientWipe"
+    Opaque = "Opaque"  # Layer alpha comes from alpha uniform
+    Video = "Video"  # Layer alpha comes from Video.a
+    Alpha = "Alpha"  # Layer alpha comes from Video2.r
+    GradientWipe = (
+        "GradientWipe"  # Layer alpha comes from Video2.r applied as a gradient wipe
+    )
+    # Mix = "Mix"  # Alpha uniform blends between Video1.rgb and Video2.rgb
 
     def to_number(self):
-        if self == AlphaMode.Alpha:
+        if self == AlphaMode.Opaque:
             return 0
-        elif self == AlphaMode.Mix:
+        elif self == AlphaMode.Video:
             return 1
-        elif self == AlphaMode.GradientWipe:
+        elif self == AlphaMode.Alpha:
             return 2
+        elif self == AlphaMode.GradientWipe:
+            return 3
 
 
 class LoopMode(StrEnum):
@@ -83,6 +89,12 @@ def parse_enum(enum_class, value, default=None):
 class Point:
     x: float
     y: float
+
+
+@dataclass
+class ShaderParam:
+    name: str
+    value: float
 
 
 @dataclass
@@ -151,7 +163,7 @@ class VolumeCue(Cue):
 
 @dataclass
 class VideoFraming(Cue):
-    fadeTime: float = 0
+    fadeIn: float = 0
     fadeType: FadeType = FadeType.Linear
     corners: Optional[List[Point]] = None
     framing: Optional[List[FramingShutter]] = None
@@ -163,7 +175,7 @@ class VideoCue(Cue):
     shader: str = "default"
     zIndex: int = 0
     alphaPath: Optional[str] = None
-    alphaMode: Optional[AlphaMode] = AlphaMode.Alpha
+    alphaMode: Optional[AlphaMode] = AlphaMode.Opaque
     alphaSoftness: Optional[float] = 0.0
     startTime: Optional[timedelta] = None
     duration: Optional[timedelta] = None
@@ -178,15 +190,15 @@ class VideoCue(Cue):
     scale: Optional[float] = 1.0
     rotation: Optional[float] = 0.0
     offset: Optional[Point] = None
-    uniforms: Optional[dict[str, float]] = None
+    uniforms: Optional[list[ShaderParam]] = None
 
 
 @dataclass
 class ShaderParams(Cue):
     videoQid: str
-    fadeTime: float = 0
+    fadeIn: float = 0
     fadeType: FadeType = FadeType.Linear
-    uniforms: Optional[dict[str, float]] = None
+    uniforms: Optional[list[ShaderParam]] = None
 
 
 CueUnion = Union[
@@ -221,21 +233,23 @@ class ShowMetadata:
     oscNIC: str = ""
     oscRXPort: int = 9000
     oscTXPort: int = 8000
+    enableRemoteControl: bool = True
+    isRemoteHost: bool = False
+    syncShowFileOnSave: bool = False
+    nodeName: str = "Video1"
+    remoteNodes: tuple[dict[str, str]] = tuple()
 
 
 @dataclass
 class QProjConfig:
     fileFormatVersion: int
-    showMetadata: ShowMetadata
+    showSettings: ShowMetadata
     columnWidths: List[float]
     cues: List[CueUnion]
 
 
-def parse_point(p: List[float]) -> Point:
-    if len(p) == 2:
-        return Point(p[0], p[1])
-    else:
-        return Point(0, 0)
+def parse_point(p: dict[str, float]) -> Point:
+    return Point(p.get("X", 0), p.get("Y", 0))
 
 
 def parse_framing(f: Dict[str, Any]) -> FramingShutter:
@@ -244,6 +258,10 @@ def parse_framing(f: Dict[str, Any]) -> FramingShutter:
         maskStart=f.get("maskStart", 0.0),
         softness=f.get("softness", 0.0),
     )
+
+
+def parse_shader_param(p: dict[str, float]) -> ShaderParam:
+    return ShaderParam(p.get("name", ""), p.get("value", 0))
 
 
 def parse_cue(data: Dict[str, Any]) -> CueUnion:
@@ -316,26 +334,26 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             scale=data.get("scale", 1.0),
             rotation=data.get("rotation", 0.0),
             offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
-            uniforms=data.get("uniforms", None),
+            uniforms=[parse_shader_param(x) for x in data.get("uniforms", [])],
         )
     elif cue_type == CueType.VideoFramingCue:
         return VideoFraming(
             **base,
-            fadeTime=data.get("fadeIn", 0.0),
+            fadeIn=data.get("fadeTime", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
             corners=[
                 parse_point(p)
-                for p in data.get("corners", [[0, 0], [1, 0], [1, 1], [0, 1]])
+                for p in data.get("corners", [[0, 0], [1, 0], [0, 1], [1, 1]])
             ],
             framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])],
         )
     elif cue_type == CueType.ShaderParamsCue:
         return ShaderParams(
             **base,
-            videoQid=str(data.get("videoQid")),
-            fadeTime=data.get("fadeIn", 0.0),
+            videoQid=str(data.get("targetQid")),
+            fadeIn=data.get("fadeTime", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
-            uniforms=data.get("uniforms", None),
+            uniforms=[parse_shader_param(x) for x in data.get("uniforms", [])],
         )
     elif cue_type == CueType.GroupCue:
         return GroupCue(**base)
@@ -348,10 +366,10 @@ def load_qproj(path: str) -> QProjConfig:
     with open(path, "r") as f:
         data = json.load(f)
     cues = [parse_cue(c) for c in data["cues"]]
-    show_metadata = ShowMetadata(**data["showMetadata"])
+    show_metadata = ShowMetadata(**data["showSettings"])
     return QProjConfig(
         fileFormatVersion=data["fileFormatVersion"],
-        showMetadata=show_metadata,
+        showSettings=show_metadata,
         columnWidths=data["columnWidths"],
         cues=cues,
     )

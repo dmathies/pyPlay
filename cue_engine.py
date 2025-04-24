@@ -14,7 +14,6 @@ class ActiveCue:
         self.cue = cue
         self.alpha = 0.0
         self.dimmer = 1.0
-        self.alpha = 0.0
         self.qid = str(cue.qid)
         self.cue_start_time = time.time()
         if isinstance(cue, VideoCue):
@@ -38,6 +37,7 @@ class ActiveCue:
         self.pause_time: float = 0
         self.state_reported: Optional[int] = None
         self.shader_parameters: Optional[dict[str, float]] = None
+        self.shader_parameters_original: Optional[dict[str, float]] = None
 
     def pause(self):
         self.paused = True
@@ -93,6 +93,14 @@ class CueEngine:
         for cue in cues:
             self.cues[str(cue.qid)] = cue
             self.qid_list.append(str(cue.qid))
+
+            # Load any shaders referenced by the cues in advance
+            if isinstance(cue, VideoCue):
+                if cue.shader != None and cue.shader != "":
+                    try:
+                        self.renderer.register_shader_program(cue.shader)
+                    except Exception as ex:
+                        print(f"Error while loading custom shader: {ex}")
 
         # Stop all cues that no longer exist
         for acue in self.active_cues:
@@ -178,14 +186,23 @@ class CueEngine:
                     match.media_fadeIn = cue.fadeIn or 0
                     match.media_fadeOut = cue.fadeOut or 0
                     match.media_fadeType = cue.fadeType or FadeType.Linear
-                    match.shader_parameters = cue.uniforms
+                    match.shader_parameters = self.shader_params_to_dict(cue.uniforms)
+                    match.shader_parameters["brightness"] = cue.brightness
+                    match.shader_parameters["contrast"] = cue.contrast
+                    match.shader_parameters["gamma"] = cue.gamma
+                    # match.shader_parameters["dimmer"] = cue.dimmer
+                    match.shader_parameters["rotation"] = cue.rotation
+                    match.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
+                    match.shader_parameters["scale"] = (cue.scale, cue.scale)
+                    match.shader_parameters_original = match.shader_parameters.copy()
                 elif isinstance(cue, VideoFraming):
-                    match.media_fadeIn = cue.fadeTime
+                    match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
                 elif isinstance(cue, ShaderParams):
-                    match.media_fadeIn = cue.fadeTime
+                    match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
-                    match.shader_parameters = cue.uniforms
+                    match.shader_parameters = self.shader_params_to_dict(cue.uniforms)
+                    match.shader_parameters_original = match.shader_parameters.copy()
 
                 match.loop_counter = 0
                 match.state_reported = None
@@ -215,8 +232,8 @@ class CueEngine:
     def begin_new_playback(self, cue: CueUnion, paused: bool = False):
         active_cue = ActiveCue(cue)
         active_cue.video_data.seek_start_seconds = getattr(
-            cue, "startTime", active_cue.video_data.seek_start_seconds
-        )
+            cue, "startTime", timedelta(0)
+        ).total_seconds()
 
         # Local copies can be manipulated by events.
         active_cue.media_startTime = getattr(
@@ -232,8 +249,19 @@ class CueEngine:
         active_cue.media_loopCount = cue.loopCount
         active_cue.paused = paused
         active_cue.pause_time = active_cue.cue_start_time
+        active_cue.shader_parameters = self.shader_params_to_dict(getattr(cue, "uniforms", []))
+        active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
 
         if isinstance(cue, VideoCue):
+            active_cue.shader_parameters["brightness"] = cue.brightness
+            active_cue.shader_parameters["contrast"] = cue.contrast
+            active_cue.shader_parameters["gamma"] = cue.gamma
+            #active_cue.shader_parameters["dimmer"] = cue.dimmer
+            active_cue.shader_parameters["rotation"] = cue.rotation
+            active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
+            active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
+            active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+
             self.video_handler.load_video_async(cue.path, active_cue.video_data)
             if cue.alphaPath:
                 self.video_handler.load_video_async(
@@ -285,6 +313,16 @@ class CueEngine:
                     active_cue.alpha = 1.0
 
                 # Check if we are looping
+                duration = active_cue.media_duration.total_seconds()
+                if (
+                    duration == 0
+                    and active_cue.video_data
+                    and active_cue.video_data.video_stream
+                ):
+                    duration = (
+                        active_cue.video_data.video_stream.duration
+                        * active_cue.video_data.video_stream.time_base
+                    )
                 if active_cue.endLoop or (
                     active_cue.media_loopMode != LoopMode.LoopedInfinite
                     and not (
@@ -293,11 +331,8 @@ class CueEngine:
                     )
                 ):
                     # Not looping
-                    if active_cue.media_duration.total_seconds() > 0.0:
-                        fade_start_time = (
-                            active_cue.media_duration.total_seconds()
-                            - active_cue.media_fadeOut
-                        )
+                    if duration > 0.0:
+                        fade_start_time = duration - active_cue.media_fadeOut
                         if runtime >= fade_start_time:
                             if active_cue.media_fadeOut > 0.0:
                                 active_cue.alpha = 1.0 - (
@@ -310,13 +345,12 @@ class CueEngine:
                                 active_cue.alpha = 0.0
                                 active_cue.complete = True
                 else:  # Looping
-                    if active_cue.media_duration.total_seconds() <= runtime:
+                    if duration <= runtime:
                         active_cue.loop_counter += 1
                         active_cue.cue_start_time = now
                         active_cue.media_fadeIn = 0
                         active_cue.video_data.seek_start()
             if isinstance(active_cue.cue, ShaderParams):
-
                 match = next(
                     (q for q in self.active_cues if q.qid == active_cue.cue.videoQid),
                     None,
@@ -336,10 +370,9 @@ class CueEngine:
                             active_cue.shader_parameters = {}
 
                     if active_cue.cue.uniforms:
-                        old = active_cue.shader_parameters
-                        new = active_cue.cue.uniforms
-                        interpolated = self.interpolate_dicts(old, new, alpha)
-                        match.shader_parameters = interpolated
+                        old = match.shader_parameters_original
+                        new = active_cue.shader_parameters
+                        self.interpolate_dicts(match.shader_parameters, old, new, alpha)
                         # print(f"Interpolated shader parameters: {match.shader_parameters}")
 
                     if alpha == 1.0:
@@ -351,17 +384,20 @@ class CueEngine:
             self.callback(self.active_cues)
 
     @staticmethod
-    def interpolate_dicts(old, new, alpha):
-        keys = set(old) | set(new)  # Union of keys
-        interp = {}
+    def interpolate_dicts(dst: dict[str, Any], old: dict[str, Any], new: dict[str, Any], alpha: float):
+        # keys = set(old) | set(new)  # Union of keys
+        # interp = {}
 
-        for key in keys:
-            old_val = old.get(key, 0.0)
-            new_val = new.get(key, 0.0)
-            interp[key] = (1 - alpha) * old_val + alpha * new_val
-
-        return interp
+        for key in dst:
+            old_val = old[key]
+            if not isinstance(old_val, tuple) and key in new:
+                new_val = new[key]
+                dst[key] = (1 - alpha) * old_val + alpha * new_val
 
     @staticmethod
     def smooth_step(alpha):
         return alpha * alpha * (3 - 2 * alpha)
+
+    @staticmethod
+    def shader_params_to_dict(shader_params: list[ShaderParam]) -> dict[str, float]:
+        return {p.name: p.value for p in shader_params}
