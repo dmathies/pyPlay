@@ -370,6 +370,6 @@ def load_qproj(path: str) -> QProjConfig:
     return QProjConfig(
         fileFormatVersion=data["fileFormatVersion"],
         showSettings=show_metadata,
-        columnWidths=data["columnWidths"],
+        columnWidths=data.get("columnWidths", []),
         cues=cues,
     )

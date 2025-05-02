@@ -14,65 +14,156 @@
     "enableRemoteControl": true,
     "isRemoteHost": true,
     "syncShowFileOnSave": true,
-    "nodeName": "QPlayer",
-    "remoteNodes": [
-      {
-        "name": "Video1",
-        "address": "192.168.0.110"
-      },
-      {
-        "name": "Video1",
-        "address": "192.168.0.110"
-      },
-      {
-        "name": "Video1",
-        "address": "192.168.0.110"
-      },
-      {
-        "name": "Video1",
-        "address": "192.168.0.110"
-      }
-    ]
+    "nodeName": "QPlayer"
   },
-  "columnWidths": [
-    60,
-    51,
-    40,
-    115,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60
-  ],
   "cues": [
+    {
+      "$type": "VideoCue",
+      "path": "Market1.jpg",
+      "startTime": "00:00:00",
+      "duration": "00:00:00",
+      "volume": 1,
+      "fadeIn": 3,
+      "fadeOut": 1,
+      "fadeType": 0,
+      "type": 3,
+      "qid": 101,
+      "parent": null,
+      "name": "Market1.jpg",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 1,
+      "loopCount": 0
+    },
+    {
+      "$type": "VideoCue",
+      "path": "lecture2.jpg",
+      "alphaPath": "gradients/radial_gradient.png",
+      "alphaMode": "GradientWipe",
+      "alphaSoftness": 0.2,
+      "startTime": "00:00:00",
+      "duration": "00:00:00",
+      "volume": 1,
+      "fadeIn": 1,
+      "fadeOut": 1,
+      "fadeType": 0,
+      "type": 3,
+      "qid": "101.2",
+      "parent": null,
+      "name": "Market1.jpg",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 1,
+      "loopCount": 0
+    },
+    {
+      "$type": "VideoCue",
+      "path": "vide1_h265.mp4",
+      "startTime": "00:00:10",
+      "duration": "00:00:04",
+      "volume": 1,
+      "fadeIn": 1,
+      "fadeOut": 1,
+      "fadeType": 0,
+      "type": 3,
+      "qid": 102,
+      "parent": null,
+      "name": "vide1_h265.mp4",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": "Looped",
+      "loopCount": 3
+    },
+    {
+      "$type": "VideoFraming",
+      "name": "Framing",
+      "description": "",
+      "qid": 103,
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "fadeIn": 3,
+      "fadeOut": 3,
+      "fadeType": "Smooth",
+      "loopMode": "OneShot",
+      "loopCount": 0,
+      "corners": [{ "X": 0,"Y": 0 }, { "X": 1,"Y": 0 }, { "X": 0,"Y": 1 }, { "X": 1,"Y": 1 }],
+      "framing": [{"rotation": 0, "maskStart": 0.15, "softness": 0.0},
+                  {"rotation": 0, "maskStart": 0.15, "softness": 0.0},
+                  {"rotation": 0, "maskStart": 0.15, "softness": 0.0},
+                  {"rotation": 0, "maskStart": 0.15, "softness": 0.0}
+                  ]
+    },
+    {
+      "$type": "VideoFraming",
+      "name": "Framing",
+      "description": "",
+      "qid": 104,
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "fadeIn": 3,
+      "fadeOut": 3,
+      "fadeType": "Smooth",
+      "loopMode": "OneShot",
+      "loopCount": 0,
+      "corners": [{ "X": 0,"Y": 0 }, { "X": 1,"Y": 0 }, { "X": 0,"Y": 1 }, { "X": 1,"Y": 1 }],
+      "framing": [{"rotation": 90, "maskStart": 0.0, "softness": 0.0},
+                  {"rotation": 90, "maskStart": 0.0, "softness": 0.0},
+                  {"rotation": 90, "maskStart": 0.0, "softness": 0.0},
+                  {"rotation": 90, "maskStart": 0.0, "softness": 0.0}
+                  ]
+    },
+    {
+      "$type": "VideoFraming",
+      "name": "Framing",
+      "description": "",
+      "qid": "104.1",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "fadeIn": 3,
+      "fadeOut": 3,
+      "fadeType": "Smooth",
+      "loopMode": "OneShot",
+      "loopCount": 0,
+      "corners": [{ "X": 0,"Y": 0 }, { "X": 1,"Y": 0 }, { "X": 0,"Y": 1 }, { "X": 1,"Y": 1 }],
+      "framing": [{"rotation": 0, "maskStart": 0.2, "softness": 0.1},
+                  {"rotation": 0, "maskStart": 0.2, "softness": 0.1},
+                  {"rotation": 0, "maskStart": 0.2, "softness": 0.1},
+                  {"rotation": 0, "maskStart": 0.2, "softness": 0.1}
+                  ]
+    },
+    {
+      "$type": "VideoFraming",
+      "name": "Framing2",
+      "description": "",
+      "qid": "104.2",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "fadeIn": 3,
+      "fadeOut": 3,
+      "fadeType": "Smooth",
+      "loopMode": "OneShot",
+      "loopCount": 0,
+      "corners": [{ "X": 0,"Y": 0 }, { "X": 1,"Y": 0 }, { "X": 0,"Y": 1 }, { "X": 1,"Y": 1 }],
+      "framing": [{"rotation": 45, "maskStart": 0.4, "softness": 0.2},
+                  {"rotation": 45, "maskStart": 0.4, "softness": 0.2},
+                  {"rotation": 45, "maskStart": 0.4, "softness": 0.3},
+                  {"rotation": 45, "maskStart": 0.4, "softness": 0.4}
+                  ]
+    },
     {
       "$type": "DummyCue",
       "type": 2,
-      "qid": 1,
+      "qid": 1001,
       "parent": null,
       "colour": {
         "r": 0,
@@ -123,7 +214,7 @@
         }
       ],
       "type": 7,
-      "qid": 2,
+      "qid": 10001,
       "parent": null,
       "colour": {
         "r": 1,
@@ -176,35 +267,18 @@
     {
       "$type": "VideoFramingCue",
       "corners": [
-        {
-          "X": 0,
-          "Y": 0
-        },
-        {
-          "X": 1,
-          "Y": 0
-        },
-        {
-          "X": 0,
-          "Y": 1
-        },
-        {
-          "X": 1,
-          "Y": 1
-        }
+        { "X": 0,"Y": 0 },
+        { "X": 1,"Y": 0 },
+        { "X": 0,"Y": 1 },
+        { "X": 1,"Y": 1 }
       ],
       "framing": [],
       "fadeTime": 0,
       "fadeType": 1,
       "type": 8,
-      "qid": 4,
+      "qid": 1004,
       "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
+      "colour": { "r": 0, "g": 0, "b": 0, "a": 1 },
       "name": "",
       "description": "",
       "halt": true,
@@ -221,7 +295,7 @@
       "fadeOutTime": 0,
       "fadeType": 1,
       "type": 5,
-      "qid": 6,
+      "qid": 1006,
       "parent": null,
       "colour": {
         "r": 0,

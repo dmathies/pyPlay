@@ -1,5 +1,5 @@
 import struct
-from typing import Callable, Any, Optional
+from typing import Callable, Any, Optional, List, Dict
 
 from ArtNet import ArtNet
 from ArtNet.rdm import parse_rdm, RdmCommandClass, pack_rdm
@@ -10,7 +10,7 @@ from .helper import (
 )
 from .rdm import RdmParameterID
 
-type DeviceInfo = list[dict[str, Any]]
+DeviceInfo = List[Dict[str, Any]]
 
 ART_NET_PORT = 6454
 
