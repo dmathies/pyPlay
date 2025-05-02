@@ -9,7 +9,7 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import sys
 import os
 
-from pygame.locals import *
+from pygame.locals import *  # type: ignore
 
 if sys.version_info >= (3, 9):
     from importlib.resources import files, read_text
@@ -17,9 +17,18 @@ else:
     from importlib.resources import open_binary, read_text
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from cue_engine import ActiveCue
-from qplayer_config import FramingShutter, Point, VideoCue, VideoFraming, FadeType, AlphaMode, ShaderParams
+from qplayer_config import (
+    FramingShutter,
+    Point,
+    VideoCue,
+    VideoFraming,
+    FadeType,
+    AlphaMode,
+    ShaderParams,
+)
 from video_handler import VideoStatus, VideoHandler, VideoData, VideoFrameFormat
 
 TEXTURE_UNIT_LOOKUP = [
@@ -60,12 +69,14 @@ class Renderer:
         pygame.init()
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
-        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK,
-                                        pygame.GL_CONTEXT_PROFILE_ES)
+        pygame.display.gl_set_attribute(
+            pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_ES
+        )
 
         self.window_size = (1024, 640)
         self.screen = pygame.display.set_mode(
-            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=0)
+            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=0
+        )
         pygame.display.set_caption("GAOS ArtNet Video Player")
 
         glViewport(0, 0, *self.window_size)
@@ -76,8 +87,8 @@ class Renderer:
         self.register_shader_program("default_framing")
         self.set_shader("default")
         self.VAO = self.setup_geometry()
-        self.src_pts = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
-        self.set_corners([Point(0, 0), Point(1, 0), Point(1, 1), Point(0, 1)], 1.0)
+        self.src_pts = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
+        self.set_corners([Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)], 1.0)
 
         self.clock = pygame.time.Clock()
 
@@ -92,6 +103,7 @@ class Renderer:
                 "contrast": 1.0,
                 "gamma": 1.0,
                 "homographyMatrix": self.homography_matrix,
+                "resolution": self.window_size
             }
         )
 
@@ -106,7 +118,7 @@ class Renderer:
 
         for active_cue in active_cues:
             alpha = active_cue.alpha
-            if active_cue.cue.fadeType == FadeType.Smooth:
+            if getattr(active_cue.cue, "fadeType", FadeType.Linear) == FadeType.SCurve:
                 alpha = self.smooth_step(active_cue.alpha)
 
             if isinstance(active_cue.cue, VideoCue):
@@ -114,7 +126,10 @@ class Renderer:
                     self.create_textures(active_cue.video_data)
                     active_cue.video_data.status = VideoStatus.READY
 
-                if active_cue.video_data.status == VideoStatus.READY and active_cue.paused == False:
+                if (
+                    active_cue.video_data.status == VideoStatus.READY
+                    and active_cue.paused == False
+                ):
                     frame = active_cue.video_data.get_next_frame()
                     self.update_textures(active_cue.video_data, frame)
 
@@ -122,7 +137,10 @@ class Renderer:
                     self.create_textures(active_cue.alpha_video_data)
                     active_cue.alpha_video_data.status = VideoStatus.READY
 
-                if active_cue.alpha_video_data.status == VideoStatus.READY and active_cue.paused == False:
+                if (
+                    active_cue.alpha_video_data.status == VideoStatus.READY
+                    and active_cue.paused == False
+                ):
                     frame = active_cue.alpha_video_data.get_next_frame()
                     self.update_textures(active_cue.alpha_video_data, frame)
 
@@ -131,6 +149,11 @@ class Renderer:
                         self.set_shader(active_cue.cue.shader)
                         if active_cue.shader_parameters:
                             self.set_parameters(active_cue.shader_parameters)
+                        self.set_parameters({
+                            "resolution": self.window_size,
+                            "time": self.clock.get_time()/1000,
+                            "homographyMatrix": self.homography_matrix
+                        })
                         self.draw_texture(active_cue.video_data, active_cue.alpha)
                 else:
                     if (
@@ -140,6 +163,11 @@ class Renderer:
                         self.set_shader(active_cue.cue.shader)
                         if active_cue.shader_parameters:
                             self.set_parameters(active_cue.shader_parameters)
+                        self.set_parameters({
+                            "resolution": self.window_size,
+                            "time": self.clock.get_time()/1000,
+                            "homographyMatrix": self.homography_matrix
+                        })
                         self.draw_texture(
                             active_cue.video_data,
                             active_cue.alpha,
@@ -153,7 +181,7 @@ class Renderer:
                 if active_cue.cue.corners:
                     self.set_corners(active_cue.cue.corners, alpha)
                 if active_cue.alpha == 1.0:
-                    active_cue.complete=True
+                    active_cue.complete = True
 
         if self.framing is not None:
             params = {}
@@ -181,15 +209,17 @@ class Renderer:
 
         self.clock.tick(30)
 
-
     @staticmethod
     def smooth_step(alpha):
         return alpha * alpha * (3 - 2 * alpha)
 
-
     def draw_texture(
-        self, video: VideoData, alpha: float, alpha_video: VideoData | None = None,
-        alphaMode = AlphaMode.Alpha, alphaSoftness=0.0
+        self,
+        video: VideoData,
+        alpha: float,
+        alpha_video: VideoData | None = None,
+        alphaMode=AlphaMode.Opaque,
+        alphaSoftness=0.0,
     ):
         glBindVertexArray(self.VAO)
 
@@ -198,7 +228,12 @@ class Renderer:
         if alpha_video:
             if alpha_video.status == VideoStatus.READY:
                 self.bind_texture_layer(alpha_video, 1)
-                self.set_parameters({"alphaMode": AlphaMode.to_number(alphaMode), "alphaSoftness": alphaSoftness})
+                self.set_parameters(
+                    {
+                        "alphaMode": AlphaMode.to_number(alphaMode),
+                        "alphaSoftness": alphaSoftness,
+                    }
+                )
         else:
             self.set_parameters({"alphaMode": 0})
 
@@ -209,20 +244,32 @@ class Renderer:
         target_len = max(len(self.framing), len(framing))
 
         if alpha <= 0.0:
-            if len(self.framing) < target_len:  # existing framing list is shorter than new, add extra empty frames.
-                padded_old = self.framing + [FramingShutter(0.0, 0.0, 0.0)] * (target_len - len(self.framing))
+            if (
+                len(self.framing) < target_len
+            ):  # existing framing list is shorter than new, add extra empty frames.
+                padded_old = self.framing + [FramingShutter(0.0, 0.0, 0.0)] * (
+                    target_len - len(self.framing)
+                )
                 self.framing = padded_old
 
-            self.old_framing = self.framing # Keep a copy of the old framing
-            print (f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
+            self.old_framing = self.framing  # Keep a copy of the old framing
+            print(
+                f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}"
+            )
             return
         elif alpha >= 1.0:
             self.framing = framing[:]
-            print (f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
+            print(
+                f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}"
+            )
             return
 
-        if len(framing) < target_len: # New framing is shorter than the old framing - add extra blank frames.
-            padded_new = framing + [FramingShutter(0.0, 0.0, 0.0)] * (target_len - len(framing))
+        if (
+            len(framing) < target_len
+        ):  # New framing is shorter than the old framing - add extra blank frames.
+            padded_new = framing + [FramingShutter(0.0, 0.0, 0.0)] * (
+                target_len - len(framing)
+            )
         else:
             padded_new = framing[:target_len]
 
@@ -230,14 +277,17 @@ class Renderer:
         interpolated = []
         for old_shutter, new_shutter in zip(self.old_framing, padded_new):
             interpolated_shutter = FramingShutter(
-                rotation = (1 - alpha) * old_shutter.rotation + alpha * new_shutter.rotation,
-                maskStart = (1 - alpha) * old_shutter.maskStart + alpha * new_shutter.maskStart,
-                softness = (1 - alpha) * old_shutter.softness + alpha * new_shutter.softness,
+                rotation=(1 - alpha) * old_shutter.rotation
+                + alpha * new_shutter.rotation,
+                maskStart=(1 - alpha) * old_shutter.maskStart
+                + alpha * new_shutter.maskStart,
+                softness=(1 - alpha) * old_shutter.softness
+                + alpha * new_shutter.softness,
             )
             interpolated.append(interpolated_shutter)
 
         self.framing = interpolated
-        print (f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
+        print(f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
 
     def set_corners(self, corners: list[Point], alpha: float):
         self.corners = corners
@@ -252,7 +302,8 @@ class Renderer:
             dtype=np.float32,
         )
         self.homography_matrix = self.compute_homography_manual(
-            corners_np, self.src_pts ).T.flatten()
+            corners_np, self.src_pts
+        ).T.flatten()
         self.set_parameters({"homographyMatrix": self.homography_matrix})
 
     def set_parameters(self, parameters):
@@ -273,6 +324,8 @@ class Renderer:
                     .value
                 )
                 value = parameters.get(parameter)
+
+                # print(f"Set {parameter} to {value} ({uniform_type})")
 
                 if uniform_type == GL_FLOAT:
                     glUniform1f(location, float(value))
@@ -310,6 +363,14 @@ class Renderer:
                     )
 
     def set_shader(self, shader_name):
+        if self.current_shader == shader_name:
+            return
+
+        if shader_name not in self.SHADERS:
+            self.current_shader = "default"
+            glUseProgram(self.SHADERS["default"]["shader"])
+            return
+
         self.current_shader = shader_name
         glUseProgram(self.SHADERS[shader_name]["shader"])
 
@@ -332,8 +393,9 @@ class Renderer:
             else:
                 return read_text("shaders", path)
         except Exception as e:
-            print(f"Couldn't find/read the shader: '{path}'. \n"
-                                    f"Inner exception: {e}")
+            print(
+                f"Couldn't find/read the shader: '{path}'. \n" f"Inner exception: {e}"
+            )
             # raise FileNotFoundError(f"Couldn't find/read the shader: '{path}'. \n"
             #                         f"Inner exception: {e}")
         return None
@@ -380,9 +442,6 @@ class Renderer:
         }
 
         return shader
-
-
-
 
     def bind_texture(self, alpha, dimmer, video_data, clamp=GL_CLAMP_TO_BORDER):
         self.set_parameters({"dimmer": dimmer, "alpha": alpha})
@@ -598,7 +657,8 @@ class Renderer:
             glTexSubImage2D(
                 GL_TEXTURE_2D,
                 0,
-                0, 0,
+                0,
+                0,
                 video_data.width,
                 video_data.height,
                 GL_RED,
@@ -681,6 +741,9 @@ class Renderer:
             a.append([-mx, -y, -1, 0, 0, 0, mx * u, y * u, u])
             a.append([0, 0, 0, -mx, -y, -1, mx * v, y * v, v])
 
+        # Swap the last two items so that the points go from LR reading-order to clockwise
+        a[2], a[3] = a[3], a[2]
+
         a = np.array(a)
         u, s, v = np.linalg.svd(a)
         h = v[-1, :].reshape(3, 3)
@@ -691,8 +754,9 @@ class Renderer:
         pygame.init()
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
-        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK,
-                                        pygame.GL_CONTEXT_PROFILE_ES)
+        pygame.display.gl_set_attribute(
+            pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_ES
+        )
         window_size = (1024, 640)
         pygame.display.set_mode(window_size, DOUBLEBUF | OPENGL, vsync=0)
         pygame.display.set_caption("GAOS ArtNet Video Player")
@@ -703,12 +767,27 @@ class Renderer:
     @staticmethod
     def setup_geometry():
         # Define a full-screen quad.
-        vertices = np.array([
-            -1.0, 1.0, 0.0, 0.0,
-            -1.0, -1.0, 0.0, 1.0,
-            1.0, -1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 0.0,
-        ], dtype=np.float32)
+        vertices = np.array(
+            [
+                -1.0,
+                1.0,
+                0.0,
+                0.0,
+                -1.0,
+                -1.0,
+                0.0,
+                1.0,
+                1.0,
+                -1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                0.0,
+            ],
+            dtype=np.float32,
+        )
         indices = np.array([0, 1, 2, 2, 3, 0], dtype=np.uint32)
         vao = glGenVertexArrays(1)
         vbo = glGenBuffers(1)
@@ -717,13 +796,19 @@ class Renderer:
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices,
-                     GL_STATIC_DRAW)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
-                              ctypes.c_void_p(0))
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
+        glVertexAttribPointer(
+            0, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize, ctypes.c_void_p(0)
+        )
         glEnableVertexAttribArray(0)
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * vertices.itemsize,
-                              ctypes.c_void_p(2 * vertices.itemsize))
+        glVertexAttribPointer(
+            1,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            4 * vertices.itemsize,
+            ctypes.c_void_p(2 * vertices.itemsize),
+        )
         glEnableVertexAttribArray(1)
         glBindVertexArray(0)
         print("VAO, VBO, and EBO created")

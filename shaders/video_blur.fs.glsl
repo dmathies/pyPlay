@@ -17,6 +17,8 @@ uniform sampler2D video2UV;  // For NV12
 uniform sampler2D video2U;
 uniform sampler2D video2V;
 
+uniform vec2 resolution;
+
 uniform float alpha;          // Blending factor between video1 and video2
 uniform int alphaMode;        // Use alpha as alpha or use alpha for gradient Mask progression
 uniform float alphaSoftness;  // for gradient Mask
@@ -30,6 +32,9 @@ uniform float rotation;    // Rotation in radians
 uniform float brightness;  // Range: [-1.0, 1.0]
 uniform float contrast;    // Range: [0.0, 2.0] (1.0 = no change)
 uniform float gamma;       // Range: [0.1, 5.0] (1.0 = no change)
+
+uniform float blurSize;     // 64.
+uniform float blurQuality;  // 5.
 
 vec3 NV12ToRGB(float y, vec2 uv) {
     float Y = y;
@@ -109,7 +114,40 @@ void main() {
     vec3 warpedTexCoord = homographyMatrix * vec3(newTexCoord, 1.0);
     vec2 finalTexCoord = warpedTexCoord.xy / warpedTexCoord.z;
 
-    vec3 color1 = getVideo1Color(finalTexCoord);
+    // Lens blur
+    vec2 ar = resolution.xy / resolution.yy;
+    float blurShape = .4;
+    float blurSamples = blurSize * blurQuality;
+    float blurDist = blurSize / (pow(blurSamples - 1., blurShape) * resolution.x);
+
+    vec3 color1 = vec3(0.);  // getVideo1Color(finalTexCoord);
+    if (blurSamples >= 1.) {
+        for (float i = 0.; i < blurSamples; i += 1.) {
+            // Spiral sampling
+            float t = i * 1.6869;
+            float r = pow(i, blurShape) * blurDist;
+            vec2 o = finalTexCoord + vec2(cos(t), sin(t)) * r / ar;
+
+            vec3 samp = getVideo1Color(o);
+            color1 += samp;
+            // Lazy inefficient masking
+            /*if (samp.a < .5)
+            {
+                col += samp.rgb;
+                nAccumulated += 1.;
+            } else if (i == 0.)
+            {
+                col += samp.rgb;
+                nAccumulated += 1.;
+                break;
+            }*/
+            // col += vec3(smoothstep(.004, .003, length((uv - o)*ar)));
+        }
+        color1 /= blurSamples;
+    } else {
+        color1 = getVideo1Color(finalTexCoord);
+    }
+
     vec4 color;
     switch (alphaMode) {
         default:

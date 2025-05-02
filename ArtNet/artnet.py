@@ -4,6 +4,7 @@ import struct
 from enum import IntEnum
 from typing import Callable, Any
 import sys
+
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
 else:
@@ -201,7 +202,7 @@ class ArtNet:
             self.address,
         )
 
-    def send_poll_reply(self, ip: str, port: int, config: dict):
+    def send_poll_reply(self, ip: str, port: int, config: dict[str, Any]):
         """Sends a Poll reply packet using ArtAddress configuration."""
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))

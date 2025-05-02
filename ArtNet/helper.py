@@ -5,6 +5,7 @@ from re import match
 from enum import IntEnum
 from typing import Any
 import sys
+
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
 else:

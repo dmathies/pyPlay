@@ -13,7 +13,11 @@ class ConfigManager:
         except FileNotFoundError:
             return {
                 "dmx_config": {"universe": 0, "net": 0, "sub": 0},
-                "osc_config": {"osc_tx_port": 8000, "osc_rx_port": 9000, "osc_name": "Video1"},
+                "osc_config": {
+                    "osc_tx_port": 8000,
+                    "osc_rx_port": 9000,
+                    "osc_name": "Video1",
+                },
                 "ip_address": "auto",
             }
 
