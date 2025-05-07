@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 import time
+from enum import IntEnum
+
 import pygame
 from qplayer_config import *
-from renderer import Renderer
+#from renderer import Renderer
 from video_handler import VideoHandler, VideoData, VideoStatus
 
 CUE_EVENT = pygame.USEREVENT + 3
 
+
+class CueStatus(IntEnum):
+    COMPLETE = 0
+    LOADED = 1
+    RUNNING = 2
+    LOOPING = 3
+    PAUSED = 4
+    EMPTY = -1
 
 class ActiveCue:
     def __init__(self, cue: CueUnion):
@@ -35,7 +45,7 @@ class ActiveCue:
         self.complete = False
         self.paused = False
         self.pause_time: float = 0
-        self.state_reported: Optional[int] = None
+        self.state_reported: Optional[CueStatus] = CueStatus.EMPTY
         self.shader_parameters: Optional[dict[str, float]] = None
         self.shader_parameters_original: Optional[dict[str, float]] = None
 
@@ -73,7 +83,7 @@ class ActiveCue:
 
 class CueEngine:
     def __init__(
-        self, cues: list[CueUnion], renderer: Renderer, video_handler: VideoHandler
+        self, cues: list[CueUnion], renderer, video_handler: VideoHandler
     ):
 
         self.callback = None
@@ -205,7 +215,7 @@ class CueEngine:
                     match.shader_parameters_original = match.shader_parameters.copy()
 
                 match.loop_counter = 0
-                match.state_reported = None
+                match.state_reported = 0
 
         else:
             if (
@@ -313,43 +323,44 @@ class CueEngine:
                     active_cue.alpha = 1.0
 
                 # Check if we are looping
-                duration = active_cue.media_duration.total_seconds()
-                if (
-                    duration == 0
-                    and active_cue.video_data
-                    and active_cue.video_data.video_stream
-                ):
-                    duration = (
-                        active_cue.video_data.video_stream.duration
-                        * active_cue.video_data.video_stream.time_base
-                    )
-                if active_cue.endLoop or (
-                    active_cue.media_loopMode != LoopMode.LoopedInfinite
-                    and not (
-                        active_cue.media_loopMode == LoopMode.Looped
-                        and active_cue.media_loopCount > (active_cue.loop_counter + 1)
-                    )
-                ):
-                    # Not looping
-                    if duration > 0.0:
-                        fade_start_time = duration - active_cue.media_fadeOut
-                        if runtime >= fade_start_time:
-                            if active_cue.media_fadeOut > 0.0:
-                                active_cue.alpha = 1.0 - (
-                                    runtime - fade_start_time / active_cue.media_fadeOut
-                                )
-                                if active_cue.alpha < 0.0:
+                if not active_cue.video_data.still:
+                    duration = active_cue.media_duration.total_seconds()
+                    if (
+                        duration == 0
+                        and active_cue.video_data
+                        and active_cue.video_data.video_stream
+                    ):
+                        duration = (
+                            active_cue.video_data.video_stream.duration
+                            * active_cue.video_data.video_stream.time_base
+                        )
+                    if (active_cue.endLoop or (
+                        active_cue.media_loopMode != LoopMode.LoopedInfinite
+                        and not (
+                            active_cue.media_loopMode == LoopMode.Looped
+                            and active_cue.media_loopCount > (active_cue.loop_counter + 1)
+                        )
+                    )):
+                        # Not looping
+                        if duration > 0.0:
+                            fade_start_time = duration - active_cue.media_fadeOut
+                            if runtime >= fade_start_time:
+                                if active_cue.media_fadeOut > 0.0:
+                                    active_cue.alpha = 1.0 - (
+                                        runtime - fade_start_time / active_cue.media_fadeOut
+                                    )
+                                    if active_cue.alpha < 0.0:
+                                        active_cue.alpha = 0.0
+                                        active_cue.complete = True
+                                else:
                                     active_cue.alpha = 0.0
                                     active_cue.complete = True
-                            else:
-                                active_cue.alpha = 0.0
-                                active_cue.complete = True
-                else:  # Looping
-                    if duration <= runtime:
-                        active_cue.loop_counter += 1
-                        active_cue.cue_start_time = now
-                        active_cue.media_fadeIn = 0
-                        active_cue.video_data.seek_start()
+                    else:  # Looping
+                        if duration <= runtime:
+                            active_cue.loop_counter += 1
+                            active_cue.cue_start_time = now
+                            active_cue.media_fadeIn = 0
+                            active_cue.video_data.seek_start()
             if isinstance(active_cue.cue, ShaderParams):
                 match = next(
                     (q for q in self.active_cues if q.qid == active_cue.cue.videoQid),
@@ -382,6 +393,26 @@ class CueEngine:
 
         if self.callback:
             self.callback(self.active_cues)
+
+
+    def get_status(self):
+        status= {"status": "Running", "Active Cue Count": len(self.active_cues)}
+        status["Active Cues"]= []
+        for active_cue in self.active_cues:
+            cue_status={}
+            cue_status["id"]=active_cue.cue.qid
+            cue_status["Name"]=active_cue.cue.name
+            cue_status["type"]=active_cue.cue.type
+            cue_status["time"]=active_cue.position()
+            cue_status["state"]=active_cue.state_reported.name
+            cue_status["video_state"]=active_cue.video_data.status.name
+            cue_status["uniforms"]=active_cue.shader_parameters
+            cue_status["uniforms"]["alpha"]=active_cue.alpha
+
+            status["Active Cues"].append(cue_status)
+
+        return status
+
 
     @staticmethod
     def interpolate_dicts(dst: dict[str, Any], old: dict[str, Any], new: dict[str, Any], alpha: float):

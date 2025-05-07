@@ -1,0 +1,29 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Corner Adjuster</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    #canvas { display: block; margin: auto; }
+    #coords { text-align: center; margin-top: 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center;">Adjust Square Corners</h1>
+  <canvas id="canvas" width="400" height="400" style="border:1px solid black;"></canvas>
+  <div id="coords"></div>
+
+  <script src="script.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log("Service worker registered."))
+        .catch(err => console.error("SW registration failed:", err));
+    }
+  </script>
+</body>
+</html>

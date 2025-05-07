@@ -8,7 +8,7 @@ from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc import udp_client
 
 import utils
-from cue_engine import ActiveCue
+from cue_engine import ActiveCue, CueStatus
 from qplayer_config import LoopMode
 from utils import get_ip
 
@@ -117,7 +117,7 @@ class OSCHandler:
 
     def client_beacon(self):
         while True:
-            self.client.send_message("/qplayer/remote/discovery", self.name)
+            # self.client.send_message("/qplayer/remote/discovery", self.name)
             # print(f"Beacon: {self.name}")
             time.sleep(1)
 
@@ -135,13 +135,13 @@ class OSCHandler:
 
         for active_cue in cues:
             current_time = active_cue.position()
-            cue_state = 2
+            cue_state = CueStatus.RUNNING
             if active_cue.cue.loopMode != LoopMode.OneShot:
-                cue_state = 3
+                cue_state = CueStatus.LOOPING
             if active_cue.paused:
-                cue_state = 4
+                cue_state = CueStatus.PAUSED
             if active_cue.complete:
-                cue_state = 0
+                cue_state = CueStatus.COMPLETE
                 current_time = 0
 
             if cue_state != active_cue.state_reported or (

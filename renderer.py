@@ -3,6 +3,7 @@ from __future__ import annotations
 import av
 import numpy as np
 import pygame
+import re
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 
@@ -73,11 +74,16 @@ class Renderer:
             pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_ES
         )
 
+        info = pygame.display.Info()
+        self.window_size = (info.current_w, info.current_h)
+
         self.window_size = (1024, 640)
+
         self.screen = pygame.display.set_mode(
-            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=0
+            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
         )
         pygame.display.set_caption("GAOS ArtNet Video Player")
+        pygame.mouse.set_visible(False)
 
         glViewport(0, 0, *self.window_size)
         print("GL version:", glGetString(GL_VERSION))
@@ -223,6 +229,8 @@ class Renderer:
     ):
         glBindVertexArray(self.VAO)
 
+        # print(f"Draw Texture: alpha:{alpha}, alphaMode:{alphaMode}")
+
         self.bind_texture(alpha, self.dimmer, video)
 
         if alpha_video:
@@ -253,15 +261,11 @@ class Renderer:
                 self.framing = padded_old
 
             self.old_framing = self.framing  # Keep a copy of the old framing
-            print(
-                f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}"
-            )
+            # print(f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
             return
         elif alpha >= 1.0:
             self.framing = framing[:]
-            print(
-                f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}"
-            )
+            # print(f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
             return
 
         if (
@@ -287,24 +291,27 @@ class Renderer:
             interpolated.append(interpolated_shutter)
 
         self.framing = interpolated
-        print(f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
+        # print(f"Set framing: alpha:{alpha}, maskStart[0]:{self.framing[0].maskStart}")
 
     def set_corners(self, corners: list[Point], alpha: float):
         self.corners = corners
 
-        corners_np = np.array(
-            [
-                [corners[0].x, corners[0].y],
-                [corners[1].x, corners[1].y],
-                [corners[2].x, corners[2].y],
-                [corners[3].x, corners[3].y],
-            ],
-            dtype=np.float32,
-        )
-        self.homography_matrix = self.compute_homography_manual(
-            corners_np, self.src_pts
-        ).T.flatten()
-        self.set_parameters({"homographyMatrix": self.homography_matrix})
+        try:
+            corners_np = np.array(
+                [
+                    [corners[0].x, corners[0].y],
+                    [corners[1].x, corners[1].y],
+                    [corners[2].x, corners[2].y],
+                    [corners[3].x, corners[3].y],
+                ],
+                dtype=np.float32,
+            )
+            self.homography_matrix = self.compute_homography_manual(
+                corners_np, self.src_pts
+            ).T.flatten()
+            self.set_parameters({"homographyMatrix": self.homography_matrix})
+        except Exception:
+            pass
 
     def set_parameters(self, parameters):
         if parameters.get("dimmer", None) is not None:
@@ -373,6 +380,8 @@ class Renderer:
 
         self.current_shader = shader_name
         glUseProgram(self.SHADERS[shader_name]["shader"])
+        if self.SHADERS[shader_name].get("blend_mode",None):
+            glBlendFunc(*self.SHADERS[shader_name]["blend_mode"])
 
     def load_shader_source(self, path: str) -> str | None:
         """
@@ -407,6 +416,11 @@ class Renderer:
 
         fragment_shader = self.load_shader_source(f"{shader_name}.fs.glsl")
 
+        shader_hash = hash(vertex_shader + fragment_shader)
+        if self.SHADERS.get(shader_name):
+            if self.SHADERS[shader_name]["hash"] == shader_hash:
+                return
+
         shader = compileProgram(
             compileShader(vertex_shader, GL_VERTEX_SHADER),
             compileShader(fragment_shader, GL_FRAGMENT_SHADER),
@@ -434,14 +448,60 @@ class Renderer:
             uniform_types[uni_name] = uniform_type
             uniforms.append(uni_name)
 
+        blend_mode = self.get_shader_blend_mode(fragment_shader)
+
         self.SHADERS[shader_name] = {
             "shader": shader,
             "uniforms": uniforms,
             "uniform_locators": locators,
             "uniform_types": uniform_types,
+            "blend_mode": blend_mode,
+            "hash": hash(vertex_shader + fragment_shader),
         }
 
         return shader
+
+
+    def get_shader_blend_mode(self, shader_source):
+        # find all blend pragmas; pick the last one if there are multiple
+        matches = re.findall(
+            r'^\s*#pragma\s+blend\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)',
+            shader_source,
+            re.MULTILINE
+        )
+
+        if matches:
+            src_tok, dst_tok = matches[-1]
+            # normalize tokens
+            src = src_tok.lstrip('_').upper()
+            dst = dst_tok.lstrip('_').upper()
+
+            mapping = {
+                'ZERO': GL_ZERO,
+                'ONE': GL_ONE,
+                'SRC_COLOR': GL_SRC_COLOR,
+                'ONE_MINUS_SRC_COLOR': GL_ONE_MINUS_SRC_COLOR,
+                'DST_COLOR': GL_DST_COLOR,
+                'ONE_MINUS_DST_COLOR': GL_ONE_MINUS_DST_COLOR,
+                'SRC_ALPHA': GL_SRC_ALPHA,
+                'ONE_MINUS_SRC_ALPHA': GL_ONE_MINUS_SRC_ALPHA,
+                'DST_ALPHA': GL_DST_ALPHA,
+                'ONE_MINUS_DST_ALPHA': GL_ONE_MINUS_DST_ALPHA,
+                'CONSTANT_COLOR': GL_CONSTANT_COLOR,
+                'ONE_MINUS_CONSTANT_COLOR': GL_ONE_MINUS_CONSTANT_COLOR,
+                'CONSTANT_ALPHA': GL_CONSTANT_ALPHA,
+                'ONE_MINUS_CONSTANT_ALPHA': GL_ONE_MINUS_CONSTANT_ALPHA,
+                'SRC_ALPHA_SATURATE': GL_SRC_ALPHA_SATURATE,
+            }
+
+            try:
+               return mapping[src], mapping[dst]
+            except KeyError:
+                print(f"Unknown blend factor tokens: '{src_tok}' or '{dst_tok}'")
+
+
+        return GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+
 
     def bind_texture(self, alpha, dimmer, video_data, clamp=GL_CLAMP_TO_BORDER):
         self.set_parameters({"dimmer": dimmer, "alpha": alpha})

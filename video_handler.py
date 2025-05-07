@@ -1,17 +1,18 @@
+from enum import IntEnum
 from typing import Iterator, Optional
 import av
 from av.container import InputContainer, OutputContainer
 import threading
 
 
-class VideoFrameFormat:
+class VideoFrameFormat(IntEnum):
     RGB = 0
     NV12 = 1
     YUVJ420p = 2
     GRAY = 3
 
 
-class VideoStatus:
+class VideoStatus(IntEnum):
     LOADING = 0
     LOADED = 1
     READY = 2
@@ -65,15 +66,18 @@ class VideoData:
 
 def seek_to_time(container, stream, target_time):
     # Convert time in seconds to PTS (presentation timestamp)
-    target_pts = int(target_time / stream.time_base)
+    try:
+        target_pts = int(target_time / stream.time_base)
 
-    # Seek to the nearest keyframe before the target time
-    container.seek(target_pts, stream=stream, any_frame=False, backward=True)
+        # Seek to the nearest keyframe before the target time
+        container.seek(target_pts, stream=stream, any_frame=False, backward=True)
 
-    # Decode frames until you reach the exact target time
-    for frame in container.decode(stream):
-        if frame.pts is not None and frame.time >= target_time:
-            return frame
+        # Decode frames until you reach the exact target time
+        for frame in container.decode(stream):
+            if frame.pts is not None and frame.time >= target_time:
+                return frame
+    except:
+        print("Seek failed")
     return None
 
 

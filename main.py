@@ -1,14 +1,17 @@
 import os
 import platform
 import shutil
+from dataclasses import asdict
 
-import numpy as np
 import pygame
 import threading
+
+import asyncio
 
 
 from config_manager import ConfigManager
 from cue_engine import CueEngine
+from http_handler import start_http_handler
 from utils import call_method_by_name
 from video_handler import VideoHandler
 from dmx_handler import DMXHandler, DMX_EVENT
@@ -16,7 +19,8 @@ from osc_handler import OSCHandler, OSC_MESSAGE
 from cue_engine import ActiveCue, CUE_EVENT
 
 # from renderer import Renderer
-from qplayer_config import load_qproj
+from qplayer_config import load_qproj, Point, FramingShutter
+from websocket_handler import WS_EVENT, WebSocketHandler
 
 cue_file = "Cues.qproj"
 
@@ -50,6 +54,15 @@ def main():
         tx_port=config.get_osc_tx_port(),
         name=config.get_osc_name(),
     )
+
+    # Start WebSocket server to receive UI updates
+    ws_handler = WebSocketHandler()
+    ws_handler.start()
+
+    #
+    # # Start HTTP server to serve PWA frontend (optional)
+    start_http_handler("ui", port=8000)
+
 
     # threading.Thread(target=dmx_handler.start_listening, daemon=True).start()
     threading.Thread(target=osc_handler.start_server, daemon=True).start()
@@ -109,6 +122,26 @@ def main():
                     call_method_by_name(
                         cue_engine, event.data["command"], *event.data["args"]
                     )
+            elif event.type == WS_EVENT:
+                data = event.data
+                print("Received from WebSocket:", data)
+                if data.get("corners"):
+                    corners: list[Point] = [Point(x, y) for x, y in data["corners"]]
+                    corners[2], corners[3] = corners[3], corners[2]
+
+                    renderer.set_corners(corners=corners, alpha=1.0)
+                elif data.get("shutters"):
+                    shutters: list[FramingShutter] = ws_handler.shutters_to_framing_list(data)
+                    renderer.set_framing(shutters, 1.0)
+                elif data.get("status"):
+                    page = data.get("status")
+
+                    if page == "update":
+                        ws_handler.send_to_clients(cue_engine.get_status())
+                    elif page == "perspective":
+                        ws_handler.send_to_clients({"corners": [asdict(p) for p in renderer.corners]})
+                    elif page == "framing":
+                        ws_handler.send_to_clients({"framing":[asdict(p) for p in renderer.framing]})
 
         renderer.render_frame(cue_engine.active_cues)
         cue_engine.tick()
