@@ -1,7 +1,10 @@
 import { Box, Typography, Button } from "@mui/material";
+import { useTheme } from '@mui/material';
+
 
   export default function StatusBar({ connected, reconnect }) {
 
+    const theme = useTheme();
   return (
       <Box sx={{
         position: 'fixed',
@@ -10,7 +13,7 @@ import { Box, Typography, Button } from "@mui/material";
 
         width: "100%",
         p: 1,
-        bgcolor: connected ? "#e0ffe0" : "#ffe0e0",
+        bgcolor: connected ? theme.palette.success.main : theme.palette.error.main,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center"

@@ -1,9 +1,11 @@
 // ShuttersPage.jsx
 import { Box, Grid, Slider, Typography } from "@mui/material";
 import { useEffect, useRef } from "react";
+import { useTheme } from '@mui/material';
 
 export default function ShuttersPage({ shutters, setShutters, wsRef }) {
   const shutterCanvasRef = useRef(null);
+  const theme = useTheme();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -178,8 +180,8 @@ export default function ShuttersPage({ shutters, setShutters, wsRef }) {
               sx={{
                 width: '100%',
                 aspectRatio: '16 / 10',
-                border: '1px solid #ccc',
-                backgroundColor: '#f9f9f9',
+                border: `1px solid ${theme.palette.divider}`,
+                backgroundColor: `${theme.palette.action.disabledBackground}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'

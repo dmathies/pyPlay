@@ -8,7 +8,7 @@ import {
   Box,
   IconButton,
   Grid,
-  useMediaQuery
+  useMediaQuery, useTheme
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import LeftMenu from "./components/LeftMenu";
@@ -18,6 +18,7 @@ import ShuttersPage from "./components/ShuttersPage";
 import StatusBar from "./components/StatusBar";
 
 export default function App() {
+  const theme = useTheme();
   const [status, setStatus] = useState("Connecting...");
   const [activePage, setActivePage] = useState("perspective");
   const [menuOpen, setMenuOpen] = useState(true);
@@ -116,7 +117,8 @@ export default function App() {
   };
 
   return (
-      <Box sx={{ display: 'flex', width: '100vw', height: '100svh', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex',
+        width: '100vw', height: '100svh', flexDirection: 'column' }}>
         <CssBaseline />
         <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
           <Toolbar>
@@ -129,7 +131,7 @@ export default function App() {
           </Toolbar>
         </AppBar>
         <Toolbar />
-        <Box sx={{ display: 'flex', flexGrow: 1, paddingBottom: '60px'
+        <Box sx={{ bgcolor: theme.palette.background.paper,display: 'flex', flexGrow: 1, paddingBottom: '60px'
         }}>
           <LeftMenu activePage={activePage} setActivePage={setActivePage} open={menuOpen} drawerWidth={drawerWidth}/>
           <Box

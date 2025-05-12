@@ -1,28 +1,30 @@
 import os
 import platform
 import shutil
+import sys
+import threading
 from dataclasses import asdict
 
 import pygame
-import threading
-
-import asyncio
-
 
 from config_manager import ConfigManager
+from cue_engine import CUE_EVENT
 from cue_engine import CueEngine
+from dmx_handler import DMXHandler
 from http_handler import start_http_handler
-from utils import call_method_by_name
-from video_handler import VideoHandler
-from dmx_handler import DMXHandler, DMX_EVENT
 from osc_handler import OSCHandler, OSC_MESSAGE
-from cue_engine import ActiveCue, CUE_EVENT
-
 # from renderer import Renderer
 from qplayer_config import load_qproj, Point, FramingShutter
+from utils import call_method_by_name
+from video_handler import VideoHandler
 from websocket_handler import WS_EVENT, WebSocketHandler
 
-cue_file = "Cues.qproj"
+if len(sys.argv) > 1:
+    cue_file = sys.argv[1]
+else:
+    cue_file = "Cues.qproj"
+
+base_path = os.path.dirname(cue_file)
 
 if platform.system() == "Linux":
     # Force SDL2 to use EGL instead of GLX on X11.
@@ -32,20 +34,19 @@ if platform.system() == "Linux":
     os.environ["MESA_D3D12_DEFAULT_ADAPTER_NAME"] = "nvidia"
     os.environ["DISPLAY"] = ":0.0"
 
-from pygame.locals import KEYDOWN, K_F11, K_SPACE, DOUBLEBUF, OPENGL
+from pygame.locals import KEYDOWN, K_F11, K_SPACE
 
 from renderer import Renderer
 
 
 def main():
-
     config = ConfigManager()
     qplayer_config = load_qproj(cue_file)
 
     renderer = Renderer()
     video_handler = VideoHandler()
 
-    cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler)
+    cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler, base_path)
 
     dmx_handler = DMXHandler(config.get_dmx_config(), config.get_ip_address())
     osc_handler = OSCHandler(
@@ -62,7 +63,6 @@ def main():
     #
     # # Start HTTP server to serve PWA frontend (optional)
     start_http_handler("ui", port=8000)
-
 
     # threading.Thread(target=dmx_handler.start_listening, daemon=True).start()
     threading.Thread(target=osc_handler.start_server, daemon=True).start()
@@ -141,7 +141,7 @@ def main():
                     elif page == "perspective":
                         ws_handler.send_to_clients({"corners": [asdict(p) for p in renderer.corners]})
                     elif page == "framing":
-                        ws_handler.send_to_clients({"framing":[asdict(p) for p in renderer.framing]})
+                        ws_handler.send_to_clients({"framing": [asdict(p) for p in renderer.framing]})
 
         renderer.render_frame(cue_engine.active_cues)
         cue_engine.tick()

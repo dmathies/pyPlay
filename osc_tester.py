@@ -109,7 +109,8 @@ class OSCTester:
             self.ack_queue.put(int(args[1]))
 
     def default_handler(self, address: str, *args):
-        print(f"OSC Message Received: {address}, {args}")
+        pass
+        # print(f"OSC Message Received: {address}, {args}")
 
 
 if __name__ == "__main__":

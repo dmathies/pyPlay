@@ -229,9 +229,10 @@ class Renderer:
     ):
         glBindVertexArray(self.VAO)
 
-        # print(f"Draw Texture: alpha:{alpha}, alphaMode:{alphaMode}")
+        # print(f"Draw Texture: alpha:{alpha}, alphaMode:{alphaMode},  video1Format: {video.frame_pix_format}")
 
         self.bind_texture(alpha, self.dimmer, video)
+        self.set_parameters({"video1Format": video.frame_pix_format})
 
         if alpha_video:
             if alpha_video.status == VideoStatus.READY:
@@ -240,10 +241,16 @@ class Renderer:
                     {
                         "alphaMode": AlphaMode.to_number(alphaMode),
                         "alphaSoftness": alphaSoftness,
+                        "video2Format": alpha_video.frame_pix_format,
+                        "video2ColourSpace": alpha_video.colour_space,
+                        "video1Format": video.frame_pix_format,
+                        "video1ColourSpace": video.colour_space
                     }
                 )
         else:
-            self.set_parameters({"alphaMode": 0})
+            self.set_parameters({"alphaMode": 0,
+                                 "video1Format": video.frame_pix_format,
+                                 "video1ColourSpace": video.colour_space})
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)

@@ -42,6 +42,7 @@ class LoopMode(StrEnum):
     OneShot = "OneShot"
     Looped = "Looped"
     LoopedInfinite = "LoopedInfinite"
+    HoldLastFrame = "HoldLastFrame"
 
 
 class StopMode(StrEnum):
@@ -81,8 +82,10 @@ def parse_enum(enum_class, value, default=None):
     try:
         return enum_class(value)
     except Exception:
-        return default or list(enum_class)[0]
-
+        try:
+            return default or list(enum_class)[value]
+        except IndexError:
+            return default
 
 # === Point, and FramingShutter ===
 @dataclass

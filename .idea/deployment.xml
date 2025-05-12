@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="derek@192.168.0.208:22 key (3)" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false" showDifferentInSync="false" showNewOnTargetInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false" showDifferentInSync="false" showNewOnTargetInSync="false">
     <option name="confirmBeforeUploading" value="false" />
     <serverData>
       <paths name="derek@192.168.0.208:22 key">

@@ -12,6 +12,12 @@ class VideoFrameFormat(IntEnum):
     GRAY = 3
 
 
+class VideoFrameColourSpace(IntEnum):
+    RGB = 0
+    BT601 = 1
+    BT709 = 2
+
+
 class VideoStatus(IntEnum):
     LOADING = 0
     LOADED = 1
@@ -29,6 +35,7 @@ class VideoData:
         self.height = 0
         self.textures = {}
         self.frame_pix_format = None
+        self.colour_space = VideoFrameColourSpace.RGB
         self.still = False
         self.status = VideoStatus.EMPTY
         self.current_frame = None
@@ -44,7 +51,9 @@ class VideoData:
             try:
                 frame = next(self.gen)
             except StopIteration:
-                frame = self.seek_start()
+                frame = self.current_frame
+                self.still = True
+                # frame = self.seek_start()
 
         self.current_frame = frame
         return frame
@@ -95,13 +104,18 @@ def load_video(path, video_data=VideoData()):
             still = False
 
         video_stream = container.streams.video[0]
+        colour_space = VideoFrameColourSpace.RGB
 
         if video_stream.format.is_rgb:
             frame_pix_format = VideoFrameFormat.RGB
+            colour_space = VideoFrameColourSpace.RGB
         elif video_stream.format.name == "gray":
             frame_pix_format = VideoFrameFormat.GRAY
+        elif video_stream.format.name == "yuv420p":
+            colour_space = VideoFrameColourSpace.BT601
         elif video_stream.format.name == "yuvj420p":
             frame_pix_format = VideoFrameFormat.YUVJ420p
+            colour_space = VideoFrameColourSpace.BT709
 
         gen = container.decode(video=0)
 
@@ -111,6 +125,7 @@ def load_video(path, video_data=VideoData()):
         video_data.width = video_stream.width
         video_data.height = video_stream.height
         video_data.frame_pix_format = frame_pix_format
+        video_data.colour_space = colour_space
         video_data.still = still
         video_data.current_frame = video_data.seek_start()
 

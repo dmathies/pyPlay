@@ -1,10 +1,12 @@
 // PerspectivePage.jsx
 import {Box, Button, Grid, TextField, Typography} from "@mui/material";
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from '@mui/material';
 
 export default function PerspectivePage({ corners, setCorners, wsRef }) {
   const canvasRef = useRef(null);
   const [selectedCorner, setSelectedCorner] = useState(-1);
+  const theme = useTheme();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -26,10 +28,11 @@ export default function PerspectivePage({ corners, setCorners, wsRef }) {
     canvas.height = size / 1.6; // 16:10 aspect ratio
     const ctx = canvas.getContext("2d");
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#f0f0f0';
+    ctx.fillStyle = theme.palette.background.default;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = theme.palette.action.disabledBackground;
     ctx.fillRect(0.08333 * canvas.width, 0.08333 * canvas.height, 0.83333 * canvas.width, 0.83333 * canvas.height);
-    ctx.strokeStyle = '#aaa';
+    ctx.strokeStyle = theme.palette.divider;
     ctx.lineWidth = 2;
     ctx.strokeRect(0.08333 * canvas.width, 0.08333 * canvas.height, 0.83333 * canvas.width, 0.83333 * canvas.height);
 
@@ -122,6 +125,7 @@ export default function PerspectivePage({ corners, setCorners, wsRef }) {
     };
 
     const onTouchStart = (e) => {
+      e.preventDefault(); // Stop scroll
       const { x: mx, y: my } = getTouchPos(e);
       const idx = corners.findIndex((pt) => {
         const cx = (pt.x + 0.1) * canvas.width * 0.83333;
@@ -132,6 +136,7 @@ export default function PerspectivePage({ corners, setCorners, wsRef }) {
     };
 
     const onTouchMove = (e) => {
+      e.preventDefault(); // Stop scroll
       if (selectedCorner === -1) return;
       const { x: mx, y: my } = getTouchPos(e);
       const normX = clamp((mx / canvas.width - 0.1) / 0.83333);
@@ -147,8 +152,8 @@ export default function PerspectivePage({ corners, setCorners, wsRef }) {
     canvas.addEventListener("mousedown", onMouseDown);
     canvas.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    canvas.addEventListener("touchstart", onTouchStart);
-    canvas.addEventListener("touchmove", onTouchMove);
+    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("touchend", onTouchEnd);
 
     return () => {
@@ -214,7 +219,7 @@ export default function PerspectivePage({ corners, setCorners, wsRef }) {
           <Box
               sx={{
                 width: '100%',
-                border: '1px solid #ccc',
+                border: `1px solid ${theme.palette.divider}`,
                 backgroundColor: '#fafafa',
                 display: 'flex',
                 alignItems: 'center',

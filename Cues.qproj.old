@@ -79,7 +79,7 @@
       "delay": "00:00:00",
       "loopMode": "Looped",
       "loopCount": 3,
-      "shader": "default_multiply"
+      "shader": "default"
     },
     {
       "$type": "VideoFramingCue",

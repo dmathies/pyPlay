@@ -82,26 +82,22 @@ class OSCHandler:
     ):
 
         self.received_showfile_chunks[block_number] = blob
-
-        if len(self.received_showfile_chunks) == block_number + 1:
-            # time.sleep(0.01)
-            # Don't broadcast the ack
-            reply = udp_client.SimpleUDPClient(client_address[0], self.tx_port)
-            reply.send_message(
-                "/qplayer/remote/update-show-ack", [self.name, block_number]
-            )
-        else:
-            # Out of order receive
-            self.received_showfile_chunks = {}
-            reply = udp_client.SimpleUDPClient(client_address[0], self.tx_port)
-            reply.send_message(
-                "/qplayer/remote/update-show-nack", [self.name, block_number]
-            )
+        # time.sleep(0.01)
+        # Don't broadcast the ack
+        reply = udp_client.SimpleUDPClient(client_address[0], self.tx_port)
+        reply.send_message(
+            "/qplayer/remote/update-show-ack", [self.name, block_number]
+        )
 
         if len(self.received_showfile_chunks) == total_blocks:
             print(
-                f"Received chunk {block_number+1}/{total_blocks} from {client_address[0]}:{self.tx_port}"
+                f"Received file {block_number+1}/{total_blocks} from {client_address[0]}:{self.tx_port}"
             )
+
+            reply.send_message(
+                "/qplayer/remote/update-show-ack", [self.name, -1]
+            )
+
             blob = b"".join(
                 self.received_showfile_chunks[i] for i in range(total_blocks)
             )
@@ -117,7 +113,7 @@ class OSCHandler:
 
     def client_beacon(self):
         while True:
-            # self.client.send_message("/qplayer/remote/discovery", self.name)
+            self.client.send_message("/qplayer/remote/discovery", self.name)
             # print(f"Beacon: {self.name}")
             time.sleep(1)
 
