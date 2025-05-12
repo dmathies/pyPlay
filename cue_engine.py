@@ -326,55 +326,53 @@ class CueEngine:
                 else:
                     active_cue.alpha = 1.0
 
+                # How long is the video?
+                duration = active_cue.media_duration.total_seconds()
+                if (
+                    duration == 0
+                    and active_cue.video_data
+                    and active_cue.video_data.video_stream
+                ):
+                    duration = float(
+                        active_cue.video_data.video_stream.duration
+                        * active_cue.video_data.video_stream.time_base
+                    )
+                    active_cue.media_duration = timedelta(seconds=duration)
+
+                if active_cue.media_loopMode == LoopMode.HoldLastFrame:
+                    duration = 10000000                  # If hold last frame, pretend video is very long
+
                 # Check if we are looping
-                if not active_cue.video_data.still:
-
-                    # How long is the video?
-                    duration = active_cue.media_duration.total_seconds()
-                    if (
-                        duration == 0
-                        and active_cue.video_data
-                        and active_cue.video_data.video_stream
-                    ):
-                        duration = float(
-                            active_cue.video_data.video_stream.duration
-                            * active_cue.video_data.video_stream.time_base
-                        )
-                        active_cue.media_duration = timedelta(seconds=duration)
-
-                    if active_cue.media_loopMode == LoopMode.HoldLastFrame:
-                        duration = 10000000                  # If hold last frame, pretend video is very long
-
-                    if (
-                        not active_cue.endLoop and
+                if (
+                    not active_cue.endLoop and
+                    (
+                        active_cue.media_loopMode == LoopMode.LoopedInfinite or  # looping forever?
                         (
-                            active_cue.media_loopMode == LoopMode.LoopedInfinite or  # looping forever?
-                            (
-                                active_cue.media_loopMode == LoopMode.Looped and     # Within loop limit?
-                                active_cue.media_loopCount > (active_cue.loop_counter + 1)
-                            )
+                            active_cue.media_loopMode == LoopMode.Looped and     # Within loop limit?
+                            active_cue.media_loopCount > (active_cue.loop_counter + 1)
                         )
-                    ):
-                        # Looping
-                        if duration <= runtime:
-                            active_cue.loop_counter += 1
-                            active_cue.cue_start_time = now
-                            active_cue.media_fadeIn = 0
-                            active_cue.video_data.seek_start()
-                    else:  # Not looping
-                        if duration > 0.0:
-                            fade_start_time = duration - active_cue.media_fadeOut
-                            if runtime >= fade_start_time:
-                                if active_cue.media_fadeOut > 0.0:
-                                    active_cue.alpha = 1.0 - (
-                                        runtime - fade_start_time / active_cue.media_fadeOut
-                                    )
-                                    if active_cue.alpha < 0.0:
-                                        active_cue.alpha = 0.0
-                                        active_cue.complete = True
-                                else:
+                    )
+                ):
+                    # Looping
+                    if duration <= runtime:
+                        active_cue.loop_counter += 1
+                        active_cue.cue_start_time = now
+                        active_cue.media_fadeIn = 0
+                        active_cue.video_data.seek_start()
+                else:  # Not looping
+                    if duration > 0.0:
+                        fade_start_time = duration - active_cue.media_fadeOut
+                        if runtime >= fade_start_time:
+                            if active_cue.media_fadeOut > 0.0:
+                                active_cue.alpha = 1.0 - (
+                                    runtime - fade_start_time / active_cue.media_fadeOut
+                                )
+                                if active_cue.alpha < 0.0:
                                     active_cue.alpha = 0.0
                                     active_cue.complete = True
+                            else:
+                                active_cue.alpha = 0.0
+                                active_cue.complete = True
 
             if isinstance(active_cue.cue, ShaderParams):
                 match = next(
