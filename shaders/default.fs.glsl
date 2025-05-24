@@ -116,7 +116,7 @@ vec3 getVideo2Color(vec2 finalTexCoord) {
 }
 
 void main() {
-    vec2 centeredCoord = (vTexCoords - 0.5) * scale;
+    vec2 centeredCoord = (vTexCoords - 0.5) / scale;
 
     // Apply rotation matrix
     float cosA = cos(rotation);
@@ -126,7 +126,7 @@ void main() {
     vec2 rotatedCoord = rotationMatrix * centeredCoord;
 
     // Move back to original texture space and apply offset
-    vec2 newTexCoord = rotatedCoord + 0.5 + offset;
+    vec2 newTexCoord = rotatedCoord + 0.5 - offset;
 
     vec3 warpedTexCoord = homographyMatrix * vec3(newTexCoord, 1.0);
     vec2 finalTexCoord = warpedTexCoord.xy / warpedTexCoord.z;

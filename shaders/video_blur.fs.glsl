@@ -3,6 +3,8 @@ precision highp float;
 in vec2 vTexCoords;
 out vec4 fragColor;
 
+uniform vec2 resolution;    // (in pixels)
+
 uniform float blurSize;     // 64.
 uniform float blurQuality;  // 5.
 

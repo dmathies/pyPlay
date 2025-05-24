@@ -178,6 +178,7 @@ class VideoCue(Cue):
     shader: str = "default"
     zIndex: int = 0
     alphaPath: Optional[str] = None
+    stompsOthers: bool = False
     alphaMode: Optional[AlphaMode] = AlphaMode.Opaque
     alphaSoftness: Optional[float] = 0.0
     startTime: Optional[timedelta] = None
@@ -241,7 +242,12 @@ class ShowMetadata:
     syncShowFileOnSave: bool = False
     nodeName: str = "Video1"
     remoteNodes: tuple[dict[str, str]] = tuple()
-
+    mscRXPort: int = 6004,
+    mscTXPort: int = 6004,
+    mscRXDevice: int = 112,
+    mscTXDevice: int = 113,
+    mscExecutor: int = -1,
+    mscPage: int = -1
 
 @dataclass
 class QProjConfig:
@@ -336,6 +342,7 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             gamma=data.get("gamma", 1.0),
             scale=data.get("scale", 1.0),
             rotation=data.get("rotation", 0.0),
+            stompsOthers=data.get("stompsOthers", False),
             offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
             uniforms=[parse_shader_param(x) for x in data.get("uniforms", [])],
         )

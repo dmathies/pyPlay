@@ -68,6 +68,16 @@ class Renderer:
         self.current_shader = None
 
         pygame.init()
+        info = pygame.display.Info()
+        primary_w = info.current_w
+        pygame.display.quit()
+
+        os.environ['SDL_VIDEO_FULLSCREEN_DISPLAY'] = "1"
+        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{primary_w},0"
+        os.environ['SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS'] = '0'
+
+
+        pygame.init()
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 0)
         pygame.display.gl_set_attribute(
@@ -77,11 +87,12 @@ class Renderer:
         info = pygame.display.Info()
         self.window_size = (info.current_w, info.current_h)
 
-        self.window_size = (1024, 640)
+        # self.window_size = (1920, 1200)
 
         self.screen = pygame.display.set_mode(
-            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
+            (0,0), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
         )
+        # pygame.display.toggle_fullscreen()
         pygame.display.set_caption("GAOS ArtNet Video Player")
         pygame.mouse.set_visible(False)
 
@@ -339,8 +350,6 @@ class Renderer:
                 )
                 value = parameters.get(parameter)
 
-                # print(f"Set {parameter} to {value} ({uniform_type})")
-
                 if uniform_type == GL_FLOAT:
                     glUniform1f(location, float(value))
                 elif uniform_type == GL_FLOAT_VEC2:
@@ -384,6 +393,9 @@ class Renderer:
             self.current_shader = "default"
             glUseProgram(self.SHADERS["default"]["shader"])
             return
+
+        # if not shader_name.startswith("default"):
+        #     print(f"{shader_name} shader loaded")
 
         self.current_shader = shader_name
         glUseProgram(self.SHADERS[shader_name]["shader"])

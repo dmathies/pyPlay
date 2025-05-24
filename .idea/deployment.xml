@@ -3,6 +3,13 @@
   <component name="PublishConfigData" autoUpload="Always" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false" showDifferentInSync="false" showNewOnTargetInSync="false">
     <option name="confirmBeforeUploading" value="false" />
     <serverData>
+      <paths name="derek@10.0.0.12">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/derek/pyPlay" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="derek@192.168.0.208:22 key">
         <serverdata>
           <mappings>

@@ -33,6 +33,7 @@ class ActiveCue:
             self.z_index = cue.zIndex
         else:
             self.z_index = 0
+
         self.video_data = VideoData()
         self.alpha_video_data = VideoData()
         self.media_startTime = timedelta()
@@ -42,6 +43,7 @@ class ActiveCue:
         self.media_fadeOut = 0.0
         self.media_fadeType = FadeType.Linear
         self.media_loopMode = LoopMode.OneShot
+        self.media_stompsOthers = False
         self.media_loopCount = 0
         self.loop_counter = 0
         self.endLoop = False
@@ -200,6 +202,8 @@ class CueEngine:
                     match.media_fadeIn = cue.fadeIn or 0
                     match.media_fadeOut = cue.fadeOut or 0
                     match.media_fadeType = cue.fadeType or FadeType.Linear
+                    match.media_stompsOthers = cue.stompsOthers
+
                     match.shader_parameters = self.shader_params_to_dict(cue.uniforms)
                     match.shader_parameters["brightness"] = cue.brightness
                     match.shader_parameters["contrast"] = cue.contrast
@@ -261,10 +265,14 @@ class CueEngine:
         active_cue.media_fadeType = getattr(cue, "fadeType", FadeType.Linear)
         active_cue.media_loopMode = cue.loopMode
         active_cue.media_loopCount = cue.loopCount
+        active_cue.media_stompsOthers = getattr(cue, "stompsOthers", False)
         active_cue.paused = paused
         active_cue.pause_time = active_cue.cue_start_time
         active_cue.shader_parameters = self.shader_params_to_dict(getattr(cue, "uniforms", []))
         active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+
+        if isinstance(cue, ShaderParams):
+            active_cue.media_duration = timedelta(seconds=cue.fadeIn)
 
         if isinstance(cue, VideoCue):
             active_cue.shader_parameters["brightness"] = cue.brightness
@@ -319,12 +327,26 @@ class CueEngine:
         for active_cue in self.active_cues:
             if not active_cue.paused:
                 runtime: float = now - active_cue.cue_start_time
+#                print(f"cue: {active_cue.cue.name}, runtime: {runtime}")
+
                 if active_cue.media_fadeIn > 0.0:
                     active_cue.alpha = runtime / active_cue.media_fadeIn
+#                    print(f"cue: {active_cue.cue.name}, alpha: {active_cue.alpha}")
                     if active_cue.alpha > 1.0:
                         active_cue.alpha = 1.0
+                        if active_cue.media_stompsOthers:
+                            active_cue.media_stompsOthers = False
+                            for stomped in self.active_cues:
+                                if stomped != active_cue and stomped.cue.zIndex<100:
+                                    stomped.complete = True
+
                 else:
                     active_cue.alpha = 1.0
+                    if active_cue.media_stompsOthers:
+                        active_cue.media_stompsOthers = False
+                        for stomped in self.active_cues:
+                            if stomped != active_cue:
+                                stomped.complete = True
 
                 # How long is the video?
                 duration = active_cue.media_duration.total_seconds()
@@ -337,6 +359,9 @@ class CueEngine:
                         active_cue.video_data.video_stream.duration
                         * active_cue.video_data.video_stream.time_base
                     )
+                    if active_cue.video_data.still:
+                        duration = 10000000
+
                     active_cue.media_duration = timedelta(seconds=duration)
 
                 if active_cue.media_loopMode == LoopMode.HoldLastFrame:
@@ -362,6 +387,8 @@ class CueEngine:
                 else:  # Not looping
                     if duration > 0.0:
                         fade_start_time = duration - active_cue.media_fadeOut
+#                        print(f"NL cue: {active_cue.cue.name}, fade_start_time: {fade_start_time}, runtime: {runtime}")
+
                         if runtime >= fade_start_time:
                             if active_cue.media_fadeOut > 0.0:
                                 active_cue.alpha = 1.0 - (
@@ -369,8 +396,10 @@ class CueEngine:
                                 )
                                 if active_cue.alpha < 0.0:
                                     active_cue.alpha = 0.0
+#                                    print(f"Stop cue: {active_cue.cue.name} past alpha")
                                     active_cue.complete = True
                             else:
+#                                print(f"Stop cue: {active_cue.cue.name} no fade")
                                 active_cue.alpha = 0.0
                                 active_cue.complete = True
 
@@ -402,6 +431,7 @@ class CueEngine:
                     if alpha == 1.0:
                         active_cue.complete = True
                 else:
+#                    print(f"Stop cue: {active_cue.cue.name} no match")
                     active_cue.complete = True
 
         if self.callback:
