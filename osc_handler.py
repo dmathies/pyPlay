@@ -47,7 +47,10 @@ class OSCHandler:
         print(f"OSC Message Received: {address}, {args}")
 
     def qplayer_handler(self, client_address: list, address: str, *args):
-        print(f"OSC Message: {address} {args}")
+
+        if not address.endswith("/remote/discovery"):
+            print(f"OSC Message: {address} {args}")
+
         if len(args) > 0:
             if args[0] == self.name:
                 # For me
@@ -138,16 +141,17 @@ class OSCHandler:
                 cue_state = CueStatus.PAUSED
             if active_cue.complete:
                 cue_state = CueStatus.COMPLETE
+                active_cue.state_reported = CueStatus.EMPTY
                 current_time = 0
 
             if cue_state != active_cue.state_reported or (
-                periodic_report and not (cue_state == 4 or active_cue.video_data.still)
+                periodic_report and not (cue_state == CueStatus.PAUSED or active_cue.video_data.still)
             ):
                 self.client.send_message(
                     "/qplayer/remote/fb/cue-status",
-                    [self.name, active_cue.cue.qid, cue_state, current_time],
+                    [self.name, active_cue.cue.qid, cue_state, current_time, active_cue.media_duration.total_seconds()],
                 )
-                print(
-                    f"Active Cue: {active_cue.cue.name}, state:{cue_state}, time: {current_time:.2f}"
-                )
+                # print(
+                #     f"Active Cue: {active_cue.cue.name}, state:{cue_state}, time: {current_time:.2f}, duration: {active_cue.media_duration.total_seconds():.2f}"
+                # )
                 active_cue.state_reported = cue_state

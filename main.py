@@ -16,7 +16,7 @@ from osc_handler import OSCHandler, OSC_MESSAGE
 # from renderer import Renderer
 from qplayer_config import load_qproj, Point, FramingShutter
 from utils import call_method_by_name
-from video_handler import VideoHandler
+from video_handler import VideoHandler, VideoData
 from websocket_handler import WS_EVENT, WebSocketHandler
 
 if len(sys.argv) > 1:
@@ -38,6 +38,8 @@ from pygame.locals import KEYDOWN, K_F11, K_SPACE
 
 from renderer import Renderer
 
+from video_handler import load_video
+
 
 def main():
     config = ConfigManager()
@@ -47,6 +49,16 @@ def main():
     video_handler = VideoHandler()
 
     cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler, base_path)
+
+    mask_data = VideoData()
+    load_video(cue_engine.resolve_path("Mask.jpg"), mask_data)
+    mask_data.get_next_frame()
+    black_video_data = VideoData()
+    load_video(cue_engine.resolve_path("Black.jpg"), black_video_data)
+    black_video_data.get_next_frame()
+
+    renderer.set_background(black_video_data)
+    renderer.set_mask(mask_data)
 
     dmx_handler = DMXHandler(config.get_dmx_config(), config.get_ip_address())
     osc_handler = OSCHandler(

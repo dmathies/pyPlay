@@ -167,6 +167,9 @@ void main() {
     // Apply gamma correction
     color.rgb = pow(color.rgb, vec3(1.0 / gamma));
 
+    // mask
+    color.rgb = 1.0 - ((1.0-color.rgb) * (vec3(alpha)));
+
     // Ensure color stays in valid range
     fragColor = vec4(clamp(color.rgb, 0.0, 1.0), color.a * dimmer);
 }

@@ -325,7 +325,7 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
         return VideoCue(
             **base,
             path=data.get("path", ""),
-            zIndex=data.get("zindex", 0),
+            zIndex=data.get("zIndex", 0),
             shader=data.get("shader", "default"),
             alphaPath=data.get("alphaPath", ""),
             alphaMode=parse_enum(AlphaMode, data.get("alphaMode")),

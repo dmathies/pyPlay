@@ -8,7 +8,7 @@ import pygame
 
 from qplayer_config import *
 # from renderer import Renderer
-from video_handler import VideoHandler, VideoData, VideoStatus
+from video_handler import VideoHandler, VideoData, VideoStatus, VideoFrameFormat
 
 CUE_EVENT = pygame.USEREVENT + 3
 
@@ -325,19 +325,23 @@ class CueEngine:
         now = time.time()
 
         for active_cue in self.active_cues:
+            if isinstance(active_cue.cue, VideoCue) and  active_cue.video_data.status != VideoStatus.READY:
+                active_cue.cue_start_time = now
+                continue
+
             if not active_cue.paused:
                 runtime: float = now - active_cue.cue_start_time
-#                print(f"cue: {active_cue.cue.name}, runtime: {runtime}")
+                # print(f"cue: {active_cue.cue.name}, runtime: {runtime}, alpha: {active_cue.alpha}, fade_in: {active_cue.media_fadeIn}")
 
                 if active_cue.media_fadeIn > 0.0:
                     active_cue.alpha = runtime / active_cue.media_fadeIn
-#                    print(f"cue: {active_cue.cue.name}, alpha: {active_cue.alpha}")
+                    # print(f"cue: {active_cue.cue.name}, alpha: {active_cue.alpha}, fade_in: {active_cue.media_fadeIn}")
                     if active_cue.alpha > 1.0:
                         active_cue.alpha = 1.0
                         if active_cue.media_stompsOthers:
                             active_cue.media_stompsOthers = False
                             for stomped in self.active_cues:
-                                if stomped != active_cue and stomped.cue.zIndex<100:
+                                if stomped != active_cue and isinstance(stomped.cue, VideoCue) and stomped.cue.zIndex<100:
                                     stomped.complete = True
 
                 else:
@@ -345,7 +349,7 @@ class CueEngine:
                     if active_cue.media_stompsOthers:
                         active_cue.media_stompsOthers = False
                         for stomped in self.active_cues:
-                            if stomped != active_cue:
+                            if stomped != active_cue and isinstance(stomped.cue, VideoCue) and stomped.cue.zIndex<100:
                                 stomped.complete = True
 
                 # How long is the video?
@@ -387,19 +391,20 @@ class CueEngine:
                 else:  # Not looping
                     if duration > 0.0:
                         fade_start_time = duration - active_cue.media_fadeOut
-#                        print(f"NL cue: {active_cue.cue.name}, fade_start_time: {fade_start_time}, runtime: {runtime}")
+                        # new_alpha = 1.0 - ((runtime - fade_start_time) / active_cue.media_fadeOut)
+                        # print(f"NL cue: {active_cue.cue.name}, fade_start_time: {fade_start_time}, runtime: {runtime}, fade_time {active_cue.media_fadeOut}, new_alpha: {new_alpha}")
 
                         if runtime >= fade_start_time:
                             if active_cue.media_fadeOut > 0.0:
                                 active_cue.alpha = 1.0 - (
-                                    runtime - fade_start_time / active_cue.media_fadeOut
+                                    (runtime - fade_start_time) / active_cue.media_fadeOut
                                 )
                                 if active_cue.alpha < 0.0:
                                     active_cue.alpha = 0.0
-#                                    print(f"Stop cue: {active_cue.cue.name} past alpha")
+                                    # print(f"Stop cue: {active_cue.cue.name} past alpha")
                                     active_cue.complete = True
                             else:
-#                                print(f"Stop cue: {active_cue.cue.name} no fade")
+                                # print(f"Stop cue: {active_cue.cue.name} no fade")
                                 active_cue.alpha = 0.0
                                 active_cue.complete = True
 
@@ -426,7 +431,7 @@ class CueEngine:
                         old = match.shader_parameters_original
                         new = active_cue.shader_parameters
                         self.interpolate_dicts(match.shader_parameters, old, new, alpha)
-                        # print(f"Interpolated shader parameters: {match.shader_parameters}")
+                        print(f"Interpolated shader parameters: {match.shader_parameters}")
 
                     if alpha == 1.0:
                         active_cue.complete = True

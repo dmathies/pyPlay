@@ -8,7 +8,7 @@
     "audioLatency": 100,
     "audioOutputDriver": 0,
     "audioOutputDevice": "0: CABLE Input (VB-Audio Virtual C (2 channels) (Wave)",
-    "oscNIC": "192.168.0.204",
+    "oscNIC": "192.168.0.198",
     "oscRXPort": 8000,
     "oscTXPort": 9000,
     "enableRemoteControl": true,
@@ -18,7 +18,7 @@
     "remoteNodes": [
       {
         "name": "Video1",
-        "address": "192.168.0.204"
+        "address": "192.168.0.198"
       }
     ],
     "mscRXPort": 6004,
@@ -66,7 +66,7 @@
     {
       "$type": "DummyCue",
       "type": 2,
-      "qid": 1,
+      "qid": 0,
       "parent": null,
       "colour": {
         "r": 0,
@@ -98,9 +98,9 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 1.1,
       "contrast": 1,
-      "gamma": 1,
+      "gamma": 1.4,
       "scale": 1,
       "rotation": 0,
       "offset": {
@@ -109,7 +109,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 10,
+      "qid": 0.3,
       "parent": null,
       "colour": {
         "r": 0,
@@ -138,12 +138,12 @@
       "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
-      "fadeIn": 1,
+      "fadeIn": 2,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 1.1,
       "contrast": 1,
-      "gamma": 1,
+      "gamma": 1.4,
       "scale": 1,
       "rotation": 0,
       "offset": {
@@ -152,7 +152,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 101,
+      "qid": 2,
       "parent": null,
       "colour": {
         "r": 0,
@@ -171,7 +171,7 @@
     },
     {
       "$type": "VideoCue",
-      "path": "Media\\OvertureFireSeq.mp4",
+      "path": "Media\\OvertureFire.mp4",
       "shader": "video_blur",
       "zIndex": 0,
       "alphaPath": "",
@@ -204,7 +204,7 @@
         }
       ],
       "type": 7,
-      "qid": 103,
+      "qid": 12,
       "parent": null,
       "colour": {
         "r": 0,
@@ -223,7 +223,7 @@
     },
     {
       "$type": "ShaderParamsCue",
-      "targetQid": 103,
+      "targetQid": 12,
       "uniforms": [
         {
           "name": "blurSize",
@@ -237,7 +237,7 @@
       "fadeTime": 3,
       "fadeType": 1,
       "type": 9,
-      "qid": 103.2,
+      "qid": 14,
       "parent": null,
       "colour": {
         "r": 0,
@@ -255,8 +255,32 @@
       "remoteNode": "Video1"
     },
     {
+      "$type": "StopCue",
+      "stopQid": 12,
+      "stopMode": 0,
+      "fadeOutTime": 10,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 18,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Stop Fire",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
       "$type": "VideoCue",
-      "path": "Media\\FlamingPaper.mp4",
+      "path": "Media\\FlamingPaper2.mp4",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
@@ -266,7 +290,7 @@
       "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
-      "fadeIn": 1,
+      "fadeIn": 3,
       "fadeOut": 1,
       "fadeType": 1,
       "brightness": 1,
@@ -280,7 +304,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 201,
+      "qid": 24,
       "parent": null,
       "colour": {
         "r": 0,
@@ -289,6 +313,68 @@
         "a": 1
       },
       "name": "Heaven on Their Mind",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoFramingCue",
+      "corners": [
+        {
+          "X": 0,
+          "Y": 0
+        },
+        {
+          "X": 1,
+          "Y": 0
+        },
+        {
+          "X": 0,
+          "Y": 1
+        },
+        {
+          "X": 1,
+          "Y": 1
+        }
+      ],
+      "framing": [
+        {
+          "rotation": 0,
+          "maskStart": 0.36,
+          "softness": 0.1
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0.4,
+          "softness": 0.1
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        }
+      ],
+      "fadeTime": 3,
+      "fadeType": 1,
+      "type": 8,
+      "qid": 28,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Big Framing",
       "description": "",
       "halt": true,
       "enabled": true,
@@ -323,7 +409,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 301,
+      "qid": 30,
       "parent": null,
       "colour": {
         "r": 0,
@@ -366,7 +452,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 302,
+      "qid": 33,
       "parent": null,
       "colour": {
         "r": 0,
@@ -398,7 +484,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 2,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -409,7 +495,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 401,
+      "qid": 34,
       "parent": null,
       "colour": {
         "r": 0,
@@ -423,6 +509,116 @@
       "enabled": true,
       "delay": "00:00:00",
       "loopMode": 2,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 33,
+      "stopMode": 0,
+      "fadeOutTime": 0,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 39,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoFramingCue",
+      "corners": [
+        {
+          "X": 0,
+          "Y": 0
+        },
+        {
+          "X": 1,
+          "Y": 0
+        },
+        {
+          "X": 0,
+          "Y": 1
+        },
+        {
+          "X": 1,
+          "Y": 1
+        }
+      ],
+      "framing": [
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        },
+        {
+          "rotation": 0,
+          "maskStart": 0,
+          "softness": 0
+        }
+      ],
+      "fadeTime": 3,
+      "fadeType": 1,
+      "type": 8,
+      "qid": 46,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Off Framing",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 34,
+      "stopMode": 0,
+      "fadeOutTime": 2,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 46.01,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
+      "description": "",
+      "halt": false,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
@@ -441,7 +637,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 2,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -452,7 +648,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 501,
+      "qid": 46.1,
       "parent": null,
       "colour": {
         "r": 0,
@@ -464,49 +660,6 @@
       "description": "",
       "halt": true,
       "enabled": true,
-      "delay": "00:00:00",
-      "loopMode": 2,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "VideoCue",
-      "path": "Media\\TV_Map1.png",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": true,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 1,
-      "fadeOut": 1,
-      "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 501.1,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "This Jesus Must Die TV",
-      "description": "",
-      "halt": true,
-      "enabled": false,
       "delay": "00:00:00",
       "loopMode": 2,
       "loopCount": 0,
@@ -527,7 +680,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 2,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -538,7 +691,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 502,
+      "qid": 46.11,
       "parent": null,
       "colour": {
         "r": 0,
@@ -548,8 +701,8 @@
       },
       "name": "Red Smoke: This Jesus Must Die",
       "description": "",
-      "halt": true,
-      "enabled": true,
+      "halt": false,
+      "enabled": false,
       "delay": "00:00:00",
       "loopMode": 0,
       "loopCount": 0,
@@ -570,7 +723,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 0.8,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -581,7 +734,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 601,
+      "qid": 47,
       "parent": null,
       "colour": {
         "r": 0,
@@ -600,7 +753,7 @@
     },
     {
       "$type": "VideoCue",
-      "path": "Media\\white-crosses.png",
+      "path": "Media\\Cross2.jpg",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
@@ -624,7 +777,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 701,
+      "qid": 51,
       "parent": null,
       "colour": {
         "r": 0,
@@ -633,6 +786,49 @@
         "a": 1
       },
       "name": "Simon Zealots",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 3,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoCue",
+      "path": "Media\\Cross_1.mp4",
+      "shader": "default",
+      "zIndex": 0,
+      "alphaPath": "",
+      "alphaMode": 0,
+      "startTime": "00:00:00",
+      "duration": "00:00:00",
+      "stompsOthers": true,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 1,
+      "fadeOut": 1,
+      "fadeType": 1,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 1,
+      "rotation": 0,
+      "offset": {
+        "X": 0,
+        "Y": 0
+      },
+      "uniforms": [],
+      "type": 7,
+      "qid": 53,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Simon Zealots 2",
       "description": "",
       "halt": true,
       "enabled": true,
@@ -667,7 +863,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 801,
+      "qid": 60,
       "parent": null,
       "colour": {
         "r": 0,
@@ -710,7 +906,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 901,
+      "qid": 61,
       "parent": null,
       "colour": {
         "r": 0,
@@ -728,8 +924,32 @@
       "remoteNode": "Video1"
     },
     {
+      "$type": "StopCue",
+      "stopQid": 61,
+      "stopMode": 0,
+      "fadeOutTime": 2,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 67,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
       "$type": "VideoCue",
-      "path": "Media\\Stars.mp4",
+      "path": "Media\\Sunset.mp4",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
@@ -753,7 +973,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 902,
+      "qid": 79,
       "parent": null,
       "colour": {
         "r": 0,
@@ -766,50 +986,7 @@
       "halt": true,
       "enabled": true,
       "delay": "00:00:00",
-      "loopMode": 0,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "VideoCue",
-      "path": "Media\\News.mp4",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": true,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 1,
-      "fadeOut": 1,
-      "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 903,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "I Don\u0027t Know How To TV",
-      "description": "",
-      "halt": true,
-      "enabled": true,
-      "delay": "00:00:00",
-      "loopMode": 0,
+      "loopMode": 3,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
@@ -839,7 +1016,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1101,
+      "qid": 81.1,
       "parent": null,
       "colour": {
         "r": 0,
@@ -848,6 +1025,30 @@
         "a": 1
       },
       "name": "Damned For All TIme",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 3,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 81.1,
+      "stopMode": 0,
+      "fadeOutTime": 2,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 83,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
       "description": "",
       "halt": true,
       "enabled": true,
@@ -864,8 +1065,75 @@
       "alphaPath": "",
       "alphaMode": 0,
       "startTime": "00:00:00",
+      "duration": "00:10:00",
+      "stompsOthers": true,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 1,
+      "fadeOut": 1,
+      "fadeType": 1,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 0.7,
+      "rotation": 0,
+      "offset": {
+        "X": 0,
+        "Y": 0
+      },
+      "uniforms": [],
+      "type": 7,
+      "qid": 83.1,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "IPhone",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 3,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 83.1,
+      "stopMode": 0,
+      "fadeOutTime": 10,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 86,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoCue",
+      "path": "Media\\StormClouds2.mp4",
+      "shader": "default",
+      "zIndex": 0,
+      "alphaPath": "",
+      "alphaMode": 0,
+      "startTime": "00:00:00",
       "duration": "00:00:00",
-      "stompsOthers": false,
+      "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
       "fadeIn": 1,
@@ -882,7 +1150,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1301,
+      "qid": 98,
       "parent": null,
       "colour": {
         "r": 0,
@@ -890,7 +1158,7 @@
         "b": 0,
         "a": 1
       },
-      "name": "Gethsemane",
+      "name": "Garden of Geth.",
       "description": "",
       "halt": true,
       "enabled": true,
@@ -901,14 +1169,14 @@
     },
     {
       "$type": "VideoCue",
-      "path": "Media\\Stars2.mp4",
+      "path": "Media\\Flag1.mp4",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
       "alphaMode": 0,
       "startTime": "00:00:00",
       "duration": "00:00:00",
-      "stompsOthers": false,
+      "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
       "fadeIn": 1,
@@ -920,55 +1188,12 @@
       "scale": 1,
       "rotation": 0,
       "offset": {
-        "X": 0,
-        "Y": 0
+        "X": 0.05,
+        "Y": -0.1
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1302,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "Stars",
-      "description": "",
-      "halt": true,
-      "enabled": true,
-      "delay": "00:00:00",
-      "loopMode": 3,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "VideoCue",
-      "path": "Media\\Flag2.mp4",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": false,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 1,
-      "fadeOut": 1,
-      "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 1601,
+      "qid": 117,
       "parent": null,
       "colour": {
         "r": 0,
@@ -986,32 +1211,13 @@
       "remoteNode": "Video1"
     },
     {
-      "$type": "VideoCue",
-      "path": "Media\\Prison0w.jpg",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": false,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 3,
-      "fadeOut": 1,
+      "$type": "StopCue",
+      "stopQid": 117,
+      "stopMode": 0,
+      "fadeOutTime": 1,
       "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 1602,
+      "type": 5,
+      "qid": 120,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1019,126 +1225,11 @@
         "b": 0,
         "a": 1
       },
-      "name": "Red1:Pilates \u0026 Christ",
+      "name": "Blackout",
       "description": "",
       "halt": true,
       "enabled": true,
       "delay": "00:00:00",
-      "loopMode": 3,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "VideoCue",
-      "path": "Media\\Prison3w.jpg",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": false,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 3,
-      "fadeOut": 1,
-      "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 1603,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "Red2:Pilates \u0026 Christ",
-      "description": "",
-      "halt": true,
-      "enabled": true,
-      "delay": "00:00:00",
-      "loopMode": 3,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "StopCue",
-      "stopQid": 1601,
-      "stopMode": 0,
-      "fadeOutTime": 0,
-      "fadeType": 1,
-      "type": 5,
-      "qid": 1604.1,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "Stop 1601",
-      "description": "",
-      "halt": true,
-      "enabled": true,
-      "delay": "00:00:05",
-      "loopMode": 0,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "StopCue",
-      "stopQid": 1602,
-      "stopMode": 0,
-      "fadeOutTime": 0,
-      "fadeType": 1,
-      "type": 5,
-      "qid": 1605,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "Stop 1602",
-      "description": "",
-      "halt": false,
-      "enabled": true,
-      "delay": "00:00:05",
-      "loopMode": 0,
-      "loopCount": 0,
-      "remoteNode": "Video1"
-    },
-    {
-      "$type": "StopCue",
-      "stopQid": 1603,
-      "stopMode": 0,
-      "fadeOutTime": 0,
-      "fadeType": 1,
-      "type": 5,
-      "qid": 1606,
-      "parent": null,
-      "colour": {
-        "r": 0,
-        "g": 0,
-        "b": 0,
-        "a": 1
-      },
-      "name": "Stop 1603",
-      "description": "",
-      "halt": false,
-      "enabled": true,
-      "delay": "00:00:05",
       "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
@@ -1152,7 +1243,7 @@
       "alphaMode": 0,
       "startTime": "00:00:00",
       "duration": "00:00:00",
-      "stompsOthers": false,
+      "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
       "fadeIn": 1,
@@ -1169,7 +1260,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1701,
+      "qid": 121,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1179,7 +1270,7 @@
       },
       "name": "King Herod",
       "description": "",
-      "halt": false,
+      "halt": true,
       "enabled": true,
       "delay": "00:00:00",
       "loopMode": 2,
@@ -1187,21 +1278,45 @@
       "remoteNode": "Video1"
     },
     {
+      "$type": "StopCue",
+      "stopQid": 121,
+      "stopMode": 0,
+      "fadeOutTime": 1,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 126,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Blackout",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
       "$type": "VideoCue",
-      "path": "Media\\sky1.mp4",
+      "path": "Media\\Planet02.mp4",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
       "alphaMode": 0,
       "startTime": "00:00:00",
       "duration": "00:00:00",
-      "stompsOthers": false,
+      "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 1.5,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -1212,7 +1327,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1801,
+      "qid": 127,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1231,12 +1346,12 @@
     },
     {
       "$type": "StopCue",
-      "stopQid": 1701,
+      "stopQid": 127,
       "stopMode": 0,
-      "fadeOutTime": 0,
+      "fadeOutTime": 5,
       "fadeType": 1,
       "type": 5,
-      "qid": 1802,
+      "qid": 133,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1244,18 +1359,18 @@
         "b": 0,
         "a": 1
       },
-      "name": "Stop 1701",
+      "name": "Blackout",
       "description": "",
       "halt": true,
       "enabled": true,
-      "delay": "00:00:05",
+      "delay": "00:00:00",
       "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
     {
       "$type": "VideoCue",
-      "path": "Media\\Light.mp4",
+      "path": "Media\\RedSmoke.mp4",
       "shader": "default",
       "zIndex": 0,
       "alphaPath": "",
@@ -1268,7 +1383,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 3,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -1279,7 +1394,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1901,
+      "qid": 134,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1292,37 +1407,18 @@
       "halt": true,
       "enabled": true,
       "delay": "00:00:00",
-      "loopMode": 0,
+      "loopMode": 3,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
     {
-      "$type": "VideoCue",
-      "path": "Media\\High2.mp4",
-      "shader": "default",
-      "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
-      "startTime": "00:00:00",
-      "duration": "00:00:00",
-      "stompsOthers": true,
-      "dimmer": 1,
-      "volume": 1,
-      "fadeIn": 1,
-      "fadeOut": 1,
+      "$type": "StopCue",
+      "stopQid": 134,
+      "stopMode": 0,
+      "fadeOutTime": 2,
       "fadeType": 1,
-      "brightness": 1,
-      "contrast": 1,
-      "gamma": 1,
-      "scale": 1,
-      "rotation": 0,
-      "offset": {
-        "X": 0,
-        "Y": 0
-      },
-      "uniforms": [],
-      "type": 7,
-      "qid": 1902,
+      "type": 5,
+      "qid": 135,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1330,7 +1426,7 @@
         "b": 0,
         "a": 1
       },
-      "name": "Hands2:Judas\u0027 Death",
+      "name": "Blackout",
       "description": "",
       "halt": true,
       "enabled": true,
@@ -1341,11 +1437,11 @@
     },
     {
       "$type": "VideoCue",
-      "path": "Media\\High2_red.mp4",
+      "path": "Media\\red.mp4",
       "shader": "default",
       "zIndex": 0,
-      "alphaPath": "",
-      "alphaMode": 0,
+      "alphaPath": "Media\\High2_red.mp4",
+      "alphaMode": 2,
       "startTime": "00:00:00",
       "duration": "00:00:00",
       "stompsOthers": true,
@@ -1354,7 +1450,7 @@
       "fadeIn": 1,
       "fadeOut": 1,
       "fadeType": 1,
-      "brightness": 1,
+      "brightness": 3,
       "contrast": 1,
       "gamma": 1,
       "scale": 1,
@@ -1365,7 +1461,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 1903,
+      "qid": 139,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1383,13 +1479,32 @@
       "remoteNode": "Video1"
     },
     {
-      "$type": "StopCue",
-      "stopQid": 1901,
-      "stopMode": 0,
-      "fadeOutTime": 0,
+      "$type": "VideoCue",
+      "path": "Media\\Noose2.jpg",
+      "shader": "default",
+      "zIndex": 0,
+      "alphaPath": "",
+      "alphaMode": 0,
+      "startTime": "00:00:00",
+      "duration": "00:00:00",
+      "stompsOthers": true,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 0,
+      "fadeOut": 1,
       "fadeType": 1,
-      "type": 5,
-      "qid": 1904,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 1,
+      "rotation": 0,
+      "offset": {
+        "X": 0,
+        "Y": 0
+      },
+      "uniforms": [],
+      "type": 7,
+      "qid": 144,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1397,11 +1512,78 @@
         "b": 0,
         "a": 1
       },
-      "name": "Stop 1901",
+      "name": "Noose",
       "description": "",
       "halt": true,
       "enabled": true,
-      "delay": "00:00:05",
+      "delay": "00:00:00",
+      "loopMode": 2,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 144,
+      "stopMode": 0,
+      "fadeOutTime": 1,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 144.01,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Stop Noose",
+      "description": "",
+      "halt": false,
+      "enabled": true,
+      "delay": "00:00:02",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoCue",
+      "path": "Media\\Flag1_1.mp4",
+      "shader": "default",
+      "zIndex": 0,
+      "alphaPath": "",
+      "alphaMode": 0,
+      "startTime": "00:00:00",
+      "duration": "00:00:00",
+      "stompsOthers": true,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 3,
+      "fadeOut": 0,
+      "fadeType": 1,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 1,
+      "rotation": 0,
+      "offset": {
+        "X": -0.02,
+        "Y": -0.1
+      },
+      "uniforms": [],
+      "type": 7,
+      "qid": 145,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Flag",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
       "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
@@ -1432,7 +1614,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2101,
+      "qid": 149.1,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1445,7 +1627,7 @@
       "halt": true,
       "enabled": true,
       "delay": "00:00:00",
-      "loopMode": 3,
+      "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
@@ -1475,7 +1657,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2102,
+      "qid": 149.102,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1518,7 +1700,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2103,
+      "qid": 149.104,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1561,7 +1743,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2104,
+      "qid": 149.106,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1604,7 +1786,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2105,
+      "qid": 149.108,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1647,7 +1829,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2106,
+      "qid": 149.11,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1690,7 +1872,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2107,
+      "qid": 149.112,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1733,7 +1915,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2108,
+      "qid": 149.114,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1776,7 +1958,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2109,
+      "qid": 149.116,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1819,7 +2001,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2110,
+      "qid": 149.118,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1862,7 +2044,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2111,
+      "qid": 149.12,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1905,7 +2087,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2112,
+      "qid": 149.122,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1948,7 +2130,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2113,
+      "qid": 149.124,
       "parent": null,
       "colour": {
         "r": 0,
@@ -1991,7 +2173,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2114,
+      "qid": 149.126,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2034,7 +2216,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2115,
+      "qid": 149.128,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2077,7 +2259,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2116,
+      "qid": 149.13,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2120,7 +2302,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2117,
+      "qid": 149.132,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2163,7 +2345,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2118,
+      "qid": 149.134,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2206,7 +2388,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2119,
+      "qid": 149.136,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2249,7 +2431,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2120,
+      "qid": 149.138,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2292,7 +2474,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2121,
+      "qid": 149.14,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2335,7 +2517,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2122,
+      "qid": 149.142,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2378,7 +2560,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2123,
+      "qid": 149.144,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2421,7 +2603,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2124,
+      "qid": 149.146,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2464,7 +2646,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2125,
+      "qid": 149.148,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2507,7 +2689,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2126,
+      "qid": 149.15,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2550,7 +2732,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2127,
+      "qid": 149.152,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2593,7 +2775,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2128,
+      "qid": 149.154,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2636,7 +2818,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2129,
+      "qid": 149.156,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2679,7 +2861,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2130,
+      "qid": 149.158,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2722,7 +2904,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2131,
+      "qid": 149.16,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2765,7 +2947,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2132,
+      "qid": 149.162,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2808,7 +2990,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2133,
+      "qid": 149.164,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2851,7 +3033,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2134,
+      "qid": 149.166,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2894,7 +3076,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2135,
+      "qid": 149.168,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2937,7 +3119,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2136,
+      "qid": 149.17,
       "parent": null,
       "colour": {
         "r": 0,
@@ -2980,7 +3162,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2137,
+      "qid": 149.172,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3023,7 +3205,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2138,
+      "qid": 149.174,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3066,7 +3248,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2139,
+      "qid": 149.176,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3080,6 +3262,30 @@
       "enabled": true,
       "delay": "00:00:00",
       "loopMode": 3,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "StopCue",
+      "stopQid": 149.176,
+      "stopMode": 0,
+      "fadeOutTime": 1,
+      "fadeType": 1,
+      "type": 5,
+      "qid": 159,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Stop Blood",
+      "description": "",
+      "halt": true,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
       "loopCount": 0,
       "remoteNode": "Video1"
     },
@@ -3109,7 +3315,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2141,
+      "qid": 163,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3138,7 +3344,7 @@
       "stompsOthers": true,
       "dimmer": 1,
       "volume": 1,
-      "fadeIn": 1,
+      "fadeIn": 3,
       "fadeOut": 1,
       "fadeType": 1,
       "brightness": 1,
@@ -3152,7 +3358,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2142,
+      "qid": 166,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3195,7 +3401,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2143,
+      "qid": 167,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3238,7 +3444,7 @@
       },
       "uniforms": [],
       "type": 7,
-      "qid": 2144,
+      "qid": 169,
       "parent": null,
       "colour": {
         "r": 0,
@@ -3251,7 +3457,50 @@
       "halt": true,
       "enabled": true,
       "delay": "00:00:00",
-      "loopMode": 0,
+      "loopMode": 3,
+      "loopCount": 0,
+      "remoteNode": "Video1"
+    },
+    {
+      "$type": "VideoCue",
+      "path": "Media\\Big.jpg",
+      "shader": "default_multiply",
+      "zIndex": 1000,
+      "alphaPath": "",
+      "alphaMode": 0,
+      "startTime": "00:00:00",
+      "duration": "00:45:00",
+      "stompsOthers": false,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 2,
+      "fadeOut": 0,
+      "fadeType": 1,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 1,
+      "rotation": 0,
+      "offset": {
+        "X": 0,
+        "Y": 0
+      },
+      "uniforms": [],
+      "type": 7,
+      "qid": 170,
+      "parent": null,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Big Frames",
+      "description": "",
+      "halt": true,
+      "enabled": false,
+      "delay": "00:00:00",
+      "loopMode": 3,
       "loopCount": 0,
       "remoteNode": "Video1"
     }

@@ -55,6 +55,8 @@ TEXTURE_UNIT_LOOKUP = [
 class Renderer:
     def __init__(self):
 
+        self.mask_data = None
+        self.bg_video = None
         self.homography_matrix = None
         self.corners = []
         self.old_corners = []
@@ -67,14 +69,14 @@ class Renderer:
         self.SHADERS = {}
         self.current_shader = None
 
-        pygame.init()
-        info = pygame.display.Info()
-        primary_w = info.current_w
-        pygame.display.quit()
+        # pygame.init()
+        # info = pygame.display.Info()
+        # primary_w = info.current_w
+        # pygame.display.quit()
 
-        os.environ['SDL_VIDEO_FULLSCREEN_DISPLAY'] = "1"
-        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{primary_w},0"
-        os.environ['SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS'] = '0'
+        # os.environ['SDL_VIDEO_FULLSCREEN_DISPLAY'] = "1"
+        # os.environ['SDL_VIDEO_WINDOW_POS'] = f"{primary_w},0"
+        # os.environ['SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS'] = '0'
 
 
         pygame.init()
@@ -87,10 +89,10 @@ class Renderer:
         info = pygame.display.Info()
         self.window_size = (info.current_w, info.current_h)
 
-        # self.window_size = (1920, 1200)
+        self.window_size = (1024,640)
 
         self.screen = pygame.display.set_mode(
-            (0,0), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
+            self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=1
         )
         # pygame.display.toggle_fullscreen()
         pygame.display.set_caption("GAOS ArtNet Video Player")
@@ -102,6 +104,7 @@ class Renderer:
 
         self.register_shader_program("default")
         self.register_shader_program("default_framing")
+        self.register_shader_program("mask")
         self.set_shader("default")
         self.VAO = self.setup_geometry()
         self.src_pts = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
@@ -125,10 +128,15 @@ class Renderer:
         )
 
     def render_frame(self, active_cues: list[ActiveCue]):
+        glClearColor(0.0, 0.0, 0.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
+        # Draw bg frame
+        # if self.bg_video:
+        #     self.draw_texture(self.bg_video, 1.0)
+        #
         active_cues[:] = [
             cue for cue in active_cues if not cue.complete
         ]  # Remove completed cues
@@ -220,6 +228,22 @@ class Renderer:
                 glBindVertexArray(0)
                 offset_angle += np.pi / 2
 
+            self.set_shader(current_shader)
+
+        if self.mask_data:
+            if self.mask_data.status == VideoStatus.LOADED:
+                self.create_textures(self.mask_data)
+                self.mask_data.status = VideoStatus.READY
+                frame = self.mask_data.get_next_frame()
+                self.update_textures(self.mask_data, frame)
+
+
+            # Draw mask
+            current_shader = self.current_shader
+            self.set_shader("mask")
+
+            glBlendFunc(GL_DST_COLOR, GL_ZERO)
+            self.draw_texture(self.mask_data, 1.0)
             self.set_shader(current_shader)
 
         pygame.display.flip()
@@ -892,3 +916,11 @@ class Renderer:
         glBindVertexArray(0)
         print("VAO, VBO, and EBO created")
         return vao
+
+    def set_background(self, bg_video_data):
+        self.bg_video = bg_video_data
+        pass
+
+    def set_mask(self, mask_data):
+        self.mask_data = mask_data
+        pass
