@@ -28,6 +28,47 @@ if "--single-screen" in args:
     single_screen = True
     args = [a for a in args if a != "--single-screen"]
 
+disable_postprocess = False
+if "--no-post" in args:
+    disable_postprocess = True
+    args = [a for a in args if a != "--no-post"]
+
+profile_render = False
+if "--profile" in args:
+    profile_render = True
+    args = [a for a in args if a != "--profile"]
+
+warp_mesh = (16, 16)
+if "--warp-mesh" in args:
+    idx = args.index("--warp-mesh")
+    if idx + 1 < len(args):
+        mesh_value = args[idx + 1].lower()
+        args = args[:idx] + args[idx + 2 :]
+        try:
+            if "x" in mesh_value:
+                cols_text, rows_text = mesh_value.split("x", 1)
+                warp_mesh = (max(1, int(cols_text)), max(1, int(rows_text)))
+            else:
+                size = max(1, int(mesh_value))
+                warp_mesh = (size, size)
+        except ValueError:
+            warp_mesh = (16, 16)
+    else:
+        args = args[:idx]
+
+scene_scale = 1.0
+if "--scene-scale" in args:
+    idx = args.index("--scene-scale")
+    if idx + 1 < len(args):
+        try:
+            scene_scale = float(args[idx + 1])
+        except ValueError:
+            scene_scale = 1.0
+        scene_scale = max(0.1, min(1.0, scene_scale))
+        args = args[:idx] + args[idx + 2 :]
+    else:
+        args = args[:idx]
+
 ndi_enabled = False
 if "--ndi" in args:
     ndi_enabled = True
@@ -134,7 +175,13 @@ def main():
     config = ConfigManager()
     qplayer_config = load_qproj(cue_file)
 
-    renderer = Renderer(single_screen=single_screen)
+    renderer = Renderer(
+        single_screen=single_screen,
+        enable_postprocess=not disable_postprocess,
+        profile_render=profile_render,
+        warp_mesh=warp_mesh,
+        scene_scale=scene_scale,
+    )
     video_handler = VideoHandler()
     ndi_output = NDIOutput(NDIConfig(enabled=ndi_enabled, name=ndi_name))
 
@@ -176,11 +223,30 @@ def main():
     if loaded_mesh:
         print(f"[mesh] reverting to v{loaded_mesh['version']}")
         # restore grids
-        for i, row in enumerate(loaded_mesh["left_grid"]):
-            for j, (x, y) in enumerate(row):
+        left_saved_rows = len(loaded_mesh["left_grid"])
+        left_saved_cols = len(loaded_mesh["left_grid"][0]) if left_saved_rows else 0
+        left_current_rows = len(renderer.left_grid)
+        left_current_cols = len(renderer.left_grid[0]) if left_current_rows else 0
+        if (left_saved_rows, left_saved_cols) != (left_current_rows, left_current_cols):
+            print(
+                f"[mesh] left grid size mismatch: saved={left_saved_cols}x{left_saved_rows} "
+                f"current={left_current_cols}x{left_current_rows}; restoring overlap only"
+            )
+        for i, row in enumerate(loaded_mesh["left_grid"][:left_current_rows]):
+            for j, (x, y) in enumerate(row[:left_current_cols]):
                 renderer.update_vbo_vertex("left", i, j, x, y)
-        for i, row in enumerate(loaded_mesh["right_grid"]):
-            for j, (x, y) in enumerate(row):
+
+        right_saved_rows = len(loaded_mesh["right_grid"])
+        right_saved_cols = len(loaded_mesh["right_grid"][0]) if right_saved_rows else 0
+        right_current_rows = len(renderer.right_grid)
+        right_current_cols = len(renderer.right_grid[0]) if right_current_rows else 0
+        if (right_saved_rows, right_saved_cols) != (right_current_rows, right_current_cols):
+            print(
+                f"[mesh] right grid size mismatch: saved={right_saved_cols}x{right_saved_rows} "
+                f"current={right_current_cols}x{right_current_rows}; restoring overlap only"
+            )
+        for i, row in enumerate(loaded_mesh["right_grid"][:right_current_rows]):
+            for j, (x, y) in enumerate(row[:right_current_cols]):
                 renderer.update_vbo_vertex("right", i, j, x, y)
         # restore corners (this recomputes homography)
         left_corners = [Point(c["x"], c["y"]) for c in loaded_mesh["left_corners"]]
@@ -229,7 +295,9 @@ def main():
 
                 elif event.type == CUE_EVENT:  # New video
                     cue_engine.active_cues.append(event.data)
-                    cue_engine.active_cues.sort(key=lambda obj: obj.z_index)
+                    cue_engine.active_cues.sort(
+                        key=lambda obj: (obj.z_index, getattr(obj, "cue_order", 0))
+                    )
 
                 elif event.type == DMX_EVENT:
                     universe = event.data.get("universe")

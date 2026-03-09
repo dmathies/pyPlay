@@ -29,6 +29,7 @@ class ActiveCue:
         self.alpha = 0.0
         self.dimmer = 1.0
         self.qid = str(cue.qid)
+        self.cue_order = 0
         self.cue_start_time = time.time()
         if isinstance(cue, VideoCue):
             self.z_index = cue.zIndex
@@ -102,6 +103,7 @@ class CueEngine:
         self.active_cues: list[ActiveCue] = []
         self.last_cue = -1
         self.qid_list: list[str] = []
+        self.qid_order: dict[str, int] = {}
         self.dmx_state: dict[int, list[int]] = {}
         self._last_dmx_debug_time = 0.0
         self.base_path = base_path
@@ -111,10 +113,12 @@ class CueEngine:
     def set_cues(self, cues: list[CueUnion]):
         self.cues.clear()
         self.qid_list.clear()
+        self.qid_order.clear()
 
-        for cue in cues:
+        for index, cue in enumerate(cues):
             self.cues[str(cue.qid)] = cue
             self.qid_list.append(str(cue.qid))
+            self.qid_order[str(cue.qid)] = index
 
             # Load any shaders referenced by the cues in advance
             if isinstance(cue, VideoCue):
@@ -231,7 +235,7 @@ class CueEngine:
                     match.shader_parameters["contrast"] = cue.contrast
                     match.shader_parameters["gamma"] = cue.gamma
                     match.shader_parameters["dmxColor"] = (1.0, 1.0, 1.0)
-                    # match.shader_parameters["dimmer"] = cue.dimmer
+                    match.shader_parameters["dimmer"] = cue.dimmer
                     match.shader_parameters["rotation"] = cue.rotation
                     match.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
                     match.shader_parameters["scale"] = (cue.scale, cue.scale)
@@ -274,6 +278,7 @@ class CueEngine:
 
     def begin_new_playback(self, cue: CueUnion, paused: bool = False):
         active_cue = ActiveCue(cue)
+        active_cue.cue_order = self.qid_order.get(str(cue.qid), 0)
         active_cue.video_data.seek_start_seconds = getattr(
             cue, "startTime", timedelta(0)
         ).total_seconds()
@@ -304,7 +309,7 @@ class CueEngine:
             active_cue.shader_parameters["contrast"] = cue.contrast
             active_cue.shader_parameters["gamma"] = cue.gamma
             active_cue.shader_parameters["dmxColor"] = (1.0, 1.0, 1.0)
-            # active_cue.shader_parameters["dimmer"] = cue.dimmer
+            active_cue.shader_parameters["dimmer"] = cue.dimmer
             active_cue.shader_parameters["rotation"] = cue.rotation
             active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
             active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
@@ -394,6 +399,8 @@ class CueEngine:
                     duration == 0
                     and active_cue.video_data
                     and active_cue.video_data.video_stream
+                    and active_cue.video_data.video_stream.duration is not None
+                    and active_cue.video_data.video_stream.time_base is not None
                 ):
                     duration = float(
                         active_cue.video_data.video_stream.duration

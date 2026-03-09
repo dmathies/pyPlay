@@ -1,8 +1,18 @@
 from enum import IntEnum
+from enum import IntEnum
 from typing import Iterator, Optional
 import av
 from av.container import InputContainer, OutputContainer
 import threading
+import numpy as np
+import pygame
+
+try:
+    import OpenEXR  # type: ignore
+    import Imath  # type: ignore
+except ImportError:
+    OpenEXR = None
+    Imath = None
 
 
 class VideoFrameFormat(IntEnum):
@@ -40,6 +50,8 @@ class VideoData:
         self.status = VideoStatus.EMPTY
         self.current_frame = None
         self.seek_start_seconds = 0.0
+        self.hdr_still = False
+        self.rgba_still = False
 
     def release(self):
         # Close AV container / decoder
@@ -55,6 +67,8 @@ class VideoData:
         self.gen = None
         self.current_frame = None
         self.status = VideoStatus.EMPTY
+        self.hdr_still = False
+        self.rgba_still = False
 
     def get_next_frame(self):
         if self.still:
@@ -115,11 +129,88 @@ def seek_to_time(container, stream, target_time):
     return None
 
 
+def load_exr_still(path: str, video_data: VideoData):
+    if OpenEXR is None or Imath is None:
+        raise RuntimeError(
+            "EXR support requires the OpenEXR Python package. Install 'OpenEXR'."
+        )
+
+    exr = OpenEXR.InputFile(path)
+    header = exr.header()
+    data_window = header["dataWindow"]
+    width = data_window.max.x - data_window.min.x + 1
+    height = data_window.max.y - data_window.min.y + 1
+
+    pixel_type = Imath.PixelType(Imath.PixelType.FLOAT)
+    channel_names = header["channels"].keys()
+
+    def read_channel(name: str, fallback: float = 0.0) -> np.ndarray:
+        if name in channel_names:
+            raw = exr.channel(name, pixel_type)
+            return np.frombuffer(raw, dtype=np.float32).reshape(height, width)
+        return np.full((height, width), fallback, dtype=np.float32)
+
+    rgba = np.stack(
+        [
+            read_channel("R"),
+            read_channel("G"),
+            read_channel("B"),
+            read_channel("A", 1.0),
+        ],
+        axis=-1,
+    ).astype(np.float32, copy=False)
+
+    video_data.container = None
+    video_data.video_stream = None
+    video_data.gen = None
+    video_data.width = width
+    video_data.height = height
+    video_data.frame_pix_format = VideoFrameFormat.RGB
+    video_data.colour_space = VideoFrameColourSpace.RGB
+    video_data.still = True
+    video_data.hdr_still = True
+    video_data.rgba_still = False
+    video_data.current_frame = rgba
+    video_data.status = VideoStatus.LOADED
+
+
+def load_rgba_still(path: str, video_data: VideoData):
+    surface = pygame.image.load(path).convert_alpha()
+    width, height = surface.get_size()
+    raw = pygame.image.tobytes(surface, "RGBA", False)
+    rgba = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 4)
+
+    video_data.container = None
+    video_data.video_stream = None
+    video_data.gen = None
+    video_data.width = width
+    video_data.height = height
+    video_data.frame_pix_format = VideoFrameFormat.RGB
+    video_data.colour_space = VideoFrameColourSpace.RGB
+    video_data.still = True
+    video_data.hdr_still = False
+    video_data.rgba_still = True
+    video_data.current_frame = rgba
+    video_data.status = VideoStatus.LOADED
+
+
 def load_video(path, video_data=VideoData()):
     print(f"Load video: {path}")
 
     try:
-        if path.lower().endswith((".jpg", ".jpeg", ".png")):
+        if path.lower().endswith(".exr"):
+            try:
+                load_exr_still(path, video_data)
+                return video_data
+            except Exception as exr_error:
+                print(f"[EXR] Falling back to PyAV for {path}: {exr_error}")
+                container = av.open(path, format="image2")
+                frame_pix_format = VideoFrameFormat.RGB
+                still = True
+        elif path.lower().endswith(".png"):
+            load_rgba_still(path, video_data)
+            return video_data
+        elif path.lower().endswith((".jpg", ".jpeg", ".png")):
             container = av.open(path, format="image2")
             frame_pix_format = VideoFrameFormat.RGB
             still = True
@@ -138,6 +229,9 @@ def load_video(path, video_data=VideoData()):
             colour_space = VideoFrameColourSpace.RGB
         elif video_stream.format.name == "gray":
             frame_pix_format = VideoFrameFormat.GRAY
+        elif "gbr" in video_stream.format.name and "pf32" in video_stream.format.name:
+            frame_pix_format = VideoFrameFormat.RGB
+            colour_space = VideoFrameColourSpace.RGB
         elif video_stream.format.name == "yuv420p":
             colour_space = VideoFrameColourSpace.BT601
         elif video_stream.format.name == "yuvj420p":

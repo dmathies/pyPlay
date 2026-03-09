@@ -22,10 +22,12 @@ vec3 aces_film(vec3 x) {
 }
 
 void main() {
-    // FBO color attachments sample upside-down with this fullscreen pass layout.
-    vec2 uv = vec2(vTexCoords.x, 1.0 - vTexCoords.y);
-    vec3 hdr = texture(hdrScene, uv).rgb;
-    vec3 bloom = texture(bloomTex, uv).rgb * bloomStrength;
+    // Keep scene and bloom in the same texture-space orientation before the final
+    // output warp stage applies its own vertical convention.
+    vec2 scene_uv = vec2(vTexCoords.x, 1.0 - vTexCoords.y);
+    vec2 bloom_uv = scene_uv;
+    vec3 hdr = texture(hdrScene, scene_uv).rgb;
+    vec3 bloom = texture(bloomTex, bloom_uv).rgb * bloomStrength;
     vec3 scene = pow(max(hdr + bloom, vec3(0.0)), vec3(max(sceneGammaIn, 1e-4)));
     vec3 scaled = scene * exposure / max(whitePoint, 1e-4);
     vec3 mapped = aces_film(scaled);

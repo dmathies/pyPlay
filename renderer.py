@@ -55,7 +55,14 @@ TEXTURE_UNIT_LOOKUP = [
 
 
 class Renderer:
-    def __init__(self, single_screen: bool = False):
+    def __init__(
+        self,
+        single_screen: bool = False,
+        enable_postprocess: bool = True,
+        profile_render: bool = False,
+        warp_mesh: tuple[int, int] = (16, 16),
+        scene_scale: float = 1.0,
+    ):
 
         self.mask_data = None
         self.bg_video = None
@@ -72,8 +79,14 @@ class Renderer:
         self.SHADERS = {}
         self.current_shader = None
         self.single_screen = single_screen
+        self.enable_postprocess = enable_postprocess
+        self.profile_render = profile_render
+        self.warp_mesh = warp_mesh
+        self.scene_scale = scene_scale
         self.scene_fbo = 0
         self.scene_color_tex = 0
+        self.output_fbo = 0
+        self.output_color_tex = 0
         self.post_VAO = 0
         self.post_VBO = 0
         self.post_EBO = 0
@@ -97,6 +110,13 @@ class Renderer:
         self.last_fps_value = 0.0
         self.bloom_w = 0
         self.bloom_h = 0
+        self.bloom_blur_passes = max(0, int(os.environ.get("PYPLAY_BLOOM_PASSES", "6")))
+        self.show_fps_overlay = os.environ.get("PYPLAY_SHOW_FPS", "1") not in ("0", "false", "False")
+        self.profile_interval = max(0.1, float(os.environ.get("PYPLAY_PROFILE_INTERVAL", "1.0")))
+        self._last_profile_print = 0.0
+        self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
+        self.profile_gpu = os.environ.get("PYPLAY_PROFILE_GPU", "0") in ("1", "true", "True")
+        self.identity_homography = np.eye(3, dtype=np.float32).flatten()
 
         pygame.init()
         pygame.font.init()
@@ -155,6 +175,12 @@ class Renderer:
             self.screen = pygame.display.set_mode(
                 self.window_size, pygame.NOFRAME | pygame.OPENGL
             )
+
+        base_scene_size = self.window_size if self.single_screen else (self.left_w, self.left_h)
+        self.scene_size = (
+            max(1, int(base_scene_size[0] * self.scene_scale)),
+            max(1, int(base_scene_size[1] * self.scene_scale)),
+        )
         # self.screen = pygame.display.set_mode(
         #     self.window_size, pygame.DOUBLEBUF | pygame.OPENGL, vsync=1, display=0
         # )
@@ -175,14 +201,21 @@ class Renderer:
         self.register_shader_program("default")
         self.register_shader_program("default_additive")
         self.register_shader_program("default_multiply")
+        self.register_shader_program("scene_default")
+        self.register_shader_program("scene_default_additive")
+        self.register_shader_program("scene_light_additive")
+        self.register_shader_program("scene_holdout_alpha")
+        self.register_shader_program("scene_light_multiply")
+        self.register_shader_program("scene_default_multiply")
         self.register_shader_program("default_framing")
         self.register_shader_program("grid_wire")
         self.register_shader_program("tonemap")
         self.register_shader_program("bloom_extract")
         self.register_shader_program("bloom_blur")
         self.register_shader_program("overlay_text")
+        self.register_shader_program("output_warp")
         self.set_shader("default")
-        self.VAO = self.setup_geometry()
+        self.VAO = self.setup_geometry(rows=self.warp_mesh[1], cols=self.warp_mesh[0])
         self.setup_postprocess_resources()
         
         self.src_pts = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
@@ -202,8 +235,8 @@ class Renderer:
                 "brightness": 0.0,
                 "contrast": 1.0,
                 "gamma": 1.0,
-                "homographyMatrix": self.homography_left,
-                "resolution": self.window_size
+                "homographyMatrix": self.identity_homography,
+                "resolution": self.scene_size
             }
         )
 
@@ -211,14 +244,24 @@ class Renderer:
         # --- profiling start ---
         frame_start = time.perf_counter()
         decode_upload_time = 0.0  # total time spent in get_next_frame + update_textures
+        texture_create_time = 0.0
+        cue_draw_time = 0.0
+        framing_time = 0.0
+        mask_time = 0.0
+        warp_time = 0.0
+        flip_time = 0.0
+        cue_timings = []
         # ------------------------
 
-        glBindFramebuffer(GL_FRAMEBUFFER, self.scene_fbo)
-        glViewport(0, 0, self.window_size[0], self.window_size[1])
+        scene_bind_start = time.perf_counter()
+        target_fbo = self.scene_fbo if (self.enable_postprocess or not self.single_screen) else 0
+        glBindFramebuffer(GL_FRAMEBUFFER, target_fbo)
+        glViewport(0, 0, self.scene_size[0], self.scene_size[1])
         glClearColor(0.0, 0.0, 0.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        scene_bind_time = time.perf_counter() - scene_bind_start
 
         # Clean up completed cues and free their video resources
         completed = [cue for cue in active_cues if cue.complete]
@@ -240,12 +283,15 @@ class Renderer:
 
             if isinstance(active_cue.cue, VideoCue):
                 if active_cue.video_data.status == VideoStatus.LOADED:
+                    create_start = time.perf_counter()
                     self.create_textures(active_cue.video_data)
+                    texture_create_time += time.perf_counter() - create_start
                     active_cue.video_data.status = VideoStatus.READY
 
                 if (
                     active_cue.video_data.status == VideoStatus.READY
                     and active_cue.paused == False
+                    and not active_cue.video_data.still
                 ):
                     t0 = time.perf_counter()
                     frame = active_cue.video_data.get_next_frame()
@@ -253,12 +299,15 @@ class Renderer:
                     decode_upload_time += time.perf_counter() - t0
 
                 if active_cue.alpha_video_data.status == VideoStatus.LOADED:
+                    create_start = time.perf_counter()
                     self.create_textures(active_cue.alpha_video_data)
+                    texture_create_time += time.perf_counter() - create_start
                     active_cue.alpha_video_data.status = VideoStatus.READY
 
                 if (
                     active_cue.alpha_video_data.status == VideoStatus.READY
                     and active_cue.paused == False
+                    and not active_cue.alpha_video_data.still
                 ):
                     t0 = time.perf_counter()
                     frame = active_cue.alpha_video_data.get_next_frame()
@@ -267,40 +316,68 @@ class Renderer:
 
                 if active_cue.alpha_video_data.status == VideoStatus.EMPTY:
                     if active_cue.video_data.status == VideoStatus.READY:
-                        self.set_shader(active_cue.cue.shader)
-                        if active_cue.shader_parameters:
-                            self.set_parameters(active_cue.shader_parameters)
-                        self.set_parameters({
-                            "resolution": self.window_size,
-                            "time": self.clock.get_time()/1000,
-                        })
-                        self.draw_texture(active_cue.video_data, active_cue.alpha)
+                        scene_shader_name = self.get_scene_shader_name(active_cue)
+                        cue_start = time.perf_counter()
+                        if scene_shader_name == "scene_light_additive_holdout":
+                            self.draw_additive_holdout_to_scene(
+                                active_cue.video_data,
+                                active_cue.alpha,
+                                active_cue.shader_parameters,
+                            )
+                        else:
+                            self.set_shader(scene_shader_name)
+                            if active_cue.shader_parameters:
+                                self.set_parameters(active_cue.shader_parameters)
+                            self.set_parameters({
+                                "resolution": self.scene_size,
+                                "time": self.clock.get_time()/1000,
+                            })
+                            self.draw_texture_to_scene(active_cue.video_data, active_cue.alpha)
+                        cue_elapsed = time.perf_counter() - cue_start
+                        cue_draw_time += cue_elapsed
+                        if self.profile_cues:
+                            cue_timings.append((cue_elapsed, active_cue.qid, scene_shader_name))
                 else:
                     if (
                         active_cue.video_data.status == VideoStatus.READY
                         and active_cue.alpha_video_data.status == VideoStatus.READY
                     ):
-                        self.set_shader(active_cue.cue.shader)
-                        if active_cue.shader_parameters:
-                            self.set_parameters(active_cue.shader_parameters)
-                        self.set_parameters({
-                            "resolution": self.window_size,
-                            "time": self.clock.get_time()/1000,
-                        })
-                        self.draw_texture(
-                            active_cue.video_data,
-                            active_cue.alpha,
-                            active_cue.alpha_video_data,
-                            active_cue.cue.alphaMode,
-                            active_cue.cue.alphaSoftness,
-                        )
+                        scene_shader_name = self.get_scene_shader_name(active_cue)
+                        cue_start = time.perf_counter()
+                        if scene_shader_name == "scene_light_additive_holdout":
+                            self.draw_additive_holdout_to_scene(
+                                active_cue.video_data,
+                                active_cue.alpha,
+                                active_cue.shader_parameters,
+                            )
+                        else:
+                            self.set_shader(scene_shader_name)
+                            if active_cue.shader_parameters:
+                                self.set_parameters(active_cue.shader_parameters)
+                            self.set_parameters({
+                                "resolution": self.scene_size,
+                                "time": self.clock.get_time()/1000,
+                            })
+                            self.draw_texture_to_scene(
+                                active_cue.video_data,
+                                active_cue.alpha,
+                                active_cue.alpha_video_data,
+                                active_cue.cue.alphaMode,
+                                active_cue.cue.alphaSoftness,
+                            )
+                        cue_elapsed = time.perf_counter() - cue_start
+                        cue_draw_time += cue_elapsed
+                        if self.profile_cues:
+                            cue_timings.append((cue_elapsed, active_cue.qid, scene_shader_name))
             elif isinstance(active_cue.cue, VideoFraming):
+                framing_start = time.perf_counter()
                 if active_cue.cue.framing:
                     self.set_framing(active_cue.cue.framing, alpha)
                 if active_cue.cue.corners:
                     self.set_corners(active_cue.cue.corners, "left")
                 if active_cue.alpha == 1.0:
                     active_cue.complete = True
+                framing_time += time.perf_counter() - framing_start
 
         if self.framing is not None:
             params = {}
@@ -326,7 +403,9 @@ class Renderer:
 
         if self.mask_data:
             if self.mask_data.status == VideoStatus.LOADED:
+                create_start = time.perf_counter()
                 self.create_textures(self.mask_data)
+                texture_create_time += time.perf_counter() - create_start
                 self.mask_data.status = VideoStatus.READY
 
                 t0 = time.perf_counter()
@@ -339,7 +418,9 @@ class Renderer:
             self.set_shader("mask")
 
             glBlendFunc(GL_DST_COLOR, GL_ZERO)
-            self.draw_texture(self.mask_data, 1.0)
+            mask_start = time.perf_counter()
+            self.draw_texture_to_scene(self.mask_data, 1.0)
+            mask_time += time.perf_counter() - mask_start
             self.set_shader(current_shader)
 
         if self.framing is not None:
@@ -387,12 +468,24 @@ class Renderer:
 
                 self.set_shader(current_shader)
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        self.draw_bloom_pass()
-        self.draw_tonemap_pass()
-        self.draw_fps_overlay()
+        post_start = time.perf_counter()
+        if self.enable_postprocess:
+            self.draw_bloom_pass()
+            self.draw_tonemap_pass()
+            warp_start = time.perf_counter()
+            self.draw_output_warp(self.output_color_tex, flip_y=True)
+            warp_time += time.perf_counter() - warp_start
+        elif not self.single_screen:
+            warp_start = time.perf_counter()
+            self.draw_output_warp(self.scene_color_tex, flip_y=True)
+            warp_time += time.perf_counter() - warp_start
+        post_time = time.perf_counter() - post_start
+        if self.show_fps_overlay:
+            self.draw_fps_overlay()
         captured_frame = self.capture_output_frame_rgb() if capture_frame else None
+        flip_start = time.perf_counter()
         pygame.display.flip()
+        flip_time = time.perf_counter() - flip_start
 
         self.clock.tick(25)
 
@@ -401,23 +494,122 @@ class Renderer:
         frame_time = frame_end - frame_start
         frame_ms = frame_time * 1000.0
         decode_ms = decode_upload_time * 1000.0
+        texture_create_ms = texture_create_time * 1000.0
         other_ms = frame_ms - decode_ms
+        post_ms = post_time * 1000.0
+        setup_ms = scene_bind_time * 1000.0
+        cue_draw_ms = cue_draw_time * 1000.0
+        framing_ms = framing_time * 1000.0
+        mask_ms = mask_time * 1000.0
+        warp_ms = warp_time * 1000.0
+        flip_ms = flip_time * 1000.0
         fps_inst = 1.0 / frame_time if frame_time > 0 else 0.0
         self.last_fps_value = fps_inst
 
-        # print(
-        #     f"Frame: {frame_ms:6.2f} ms | "
-        #     f"decode+upload: {decode_ms:6.2f} ms | "
-        #     f"other: {other_ms:6.2f} ms | "
-        #     f"FPS: {fps_inst:5.1f}"
-        # )
+        if self.profile_render and (frame_end - self._last_profile_print) >= self.profile_interval:
+            video_cue_count = sum(1 for cue in active_cues if isinstance(cue.cue, VideoCue))
+            still_count = sum(
+                1
+                for cue in active_cues
+                if isinstance(cue.cue, VideoCue) and cue.video_data and cue.video_data.still
+            )
+            alpha_video_count = sum(
+                1
+                for cue in active_cues
+                if isinstance(cue.cue, VideoCue) and cue.alpha_video_data.status != VideoStatus.EMPTY
+            )
+            print(
+                "[RenderProfile] "
+                f"fps={fps_inst:5.1f} frame={frame_ms:6.2f}ms "
+                f"tex_create={texture_create_ms:6.2f}ms decode_upload={decode_ms:6.2f}ms post={post_ms:6.2f}ms "
+                f"scene_draw={cue_draw_ms:6.2f}ms warp={warp_ms:6.2f}ms flip={flip_ms:6.2f}ms "
+                f"mask={mask_ms:5.2f}ms framing={framing_ms:5.2f}ms "
+                f"other={max(0.0, other_ms - texture_create_ms - post_ms - setup_ms - cue_draw_ms - mask_ms - framing_ms - warp_ms - flip_ms):6.2f}ms "
+                f"cues={len(active_cues)} video={video_cue_count} still={still_count} alpha={alpha_video_count} "
+                f"post={'on' if self.enable_postprocess else 'off'} bloom_passes={self.bloom_blur_passes} "
+                f"warp_mesh={self.warp_mesh[0]}x{self.warp_mesh[1]} scene_scale={self.scene_scale:.2f}"
+            )
+            if self.profile_cues and cue_timings:
+                slowest = sorted(cue_timings, reverse=True)[:3]
+                slow_text = " ".join(
+                    f"qid={qid} shader={shader} ms={elapsed * 1000.0:5.2f}"
+                    for elapsed, qid, shader in slowest
+                )
+                print(f"[RenderProfile:Cues] {slow_text}")
+            self._last_profile_print = frame_end
         return captured_frame
 
     @staticmethod
     def smooth_step(alpha):
         return alpha * alpha * (3 - 2 * alpha)
 
-    def draw_texture(
+    def maybe_profile_sync(self):
+        if self.profile_gpu:
+            glFinish()
+
+    def get_scene_shader_name(self, active_cue) -> str:
+        cue = active_cue.cue
+        shader_name = getattr(cue, "shader", "default")
+
+        if (
+            shader_name == "default_additive_holdout"
+            and getattr(cue, "alphaPath", "") in (None, "")
+            and float(getattr(cue, "alphaSoftness", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "rotation", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "contrast", 1.0) or 1.0) == 1.0
+            and float(getattr(cue, "gamma", 1.0) or 1.0) == 1.0
+        ):
+            return "scene_light_additive_holdout"
+
+        if (
+            shader_name == "default_additive"
+            and getattr(cue, "alphaPath", "") in (None, "")
+            and float(getattr(cue, "alphaSoftness", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "rotation", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "contrast", 1.0) or 1.0) == 1.0
+            and float(getattr(cue, "gamma", 1.0) or 1.0) == 1.0
+        ):
+            return "scene_light_additive"
+        if (
+            shader_name == "default_multiply"
+            and getattr(cue, "alphaPath", "") in (None, "")
+            and float(getattr(cue, "alphaSoftness", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "rotation", 0.0) or 0.0) == 0.0
+            and float(getattr(cue, "contrast", 1.0) or 1.0) == 1.0
+            and float(getattr(cue, "gamma", 1.0) or 1.0) == 1.0
+        ):
+            return "scene_light_multiply"
+
+        scene_name = f"scene_{shader_name}"
+        if scene_name in self.SHADERS:
+            return scene_name
+        return shader_name
+
+    def draw_additive_holdout_to_scene(
+        self,
+        video: VideoData,
+        alpha: float,
+        shader_parameters: dict | None,
+    ):
+        self.set_shader("scene_holdout_alpha")
+        if shader_parameters:
+            self.set_parameters(shader_parameters)
+        self.set_parameters({
+            "resolution": self.scene_size,
+            "time": self.clock.get_time()/1000,
+        })
+        self.draw_texture_to_scene(video, alpha)
+
+        self.set_shader("scene_light_additive")
+        if shader_parameters:
+            self.set_parameters(shader_parameters)
+        self.set_parameters({
+            "resolution": self.scene_size,
+            "time": self.clock.get_time()/1000,
+        })
+        self.draw_texture_to_scene(video, alpha)
+
+    def draw_texture_to_scene(
         self,
         video: VideoData,
         alpha: float,
@@ -429,7 +621,8 @@ class Renderer:
 
         if video.current_frame is None:
             return
-        
+
+        self.maybe_profile_sync()
         self.bind_texture(alpha, self.dimmer, video)
         self.set_parameters({"video1Format": video.frame_pix_format})
 
@@ -451,24 +644,38 @@ class Renderer:
                                  "video1Format": video.frame_pix_format,
                                  "video1ColourSpace": video.colour_space})
 
-        # LEFT
+        glViewport(0, 0, self.scene_size[0], self.scene_size[1])
+        glBindVertexArray(self.post_VAO)
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
+        glBindVertexArray(0)
+        self.maybe_profile_sync()
+
+    def draw_output_warp(self, texture_id: int, flip_y: bool = False):
+        self.maybe_profile_sync()
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        glDisable(GL_BLEND)
+        glClearColor(0.0, 0.0, 0.0, 1.0)
+        glClear(GL_COLOR_BUFFER_BIT)
+
+        self.set_shader("output_warp")
+        self.set_parameters({"sceneTex": 0, "flipY": 1 if flip_y else 0})
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, texture_id)
+
         glViewport(0, 0, self.left_w, self.height)
-        self.set_parameters({
-            "homographyMatrix": self.homography_left,
-        })
+        self.set_parameters({"homographyMatrix": self.homography_left})
         glBindVertexArray(self.left_VAO)
         glDrawElements(GL_TRIANGLES, self.left_index_count, GL_UNSIGNED_INT, None)
 
-        # RIGHT
         if not self.single_screen and self.right_w > 0:
             glViewport(self.left_w, 0, self.right_w, self.height)
-            self.set_parameters({
-                "homographyMatrix": self.homography_right,
-            })
+            self.set_parameters({"homographyMatrix": self.homography_right})
             glBindVertexArray(self.right_VAO)
             glDrawElements(GL_TRIANGLES, self.right_index_count, GL_UNSIGNED_INT, None)
 
         glBindVertexArray(0)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        self.maybe_profile_sync()
 
     def set_framing(self, framing: list[FramingShutter], alpha: float):
         target_len = max(len(self.framing), len(framing))
@@ -639,11 +846,16 @@ class Renderer:
         return None
 
     def register_shader_program(self, shader_name):
-        vertex_shader = self.load_shader_source(f"{shader_name}.vs.glsl", quiet=True)
+        shader_aliases = {
+            "default_additive_holdout": "default_additive",
+        }
+        source_shader_name = shader_aliases.get(shader_name, shader_name)
+
+        vertex_shader = self.load_shader_source(f"{source_shader_name}.vs.glsl", quiet=True)
         if not vertex_shader:
             vertex_shader = self.load_shader_source("default.vs.glsl")
 
-        fragment_shader = self.load_shader_source(f"{shader_name}.fs.glsl")
+        fragment_shader = self.load_shader_source(f"{source_shader_name}.fs.glsl")
 
         shader_hash = hash(vertex_shader + fragment_shader)
         if self.SHADERS.get(shader_name):
@@ -750,6 +962,7 @@ class Renderer:
         internal_format: int | Constant,
         external_format: int | Constant,
         border: list[float],
+        data_type: int | Constant = GL_UNSIGNED_BYTE,
     ):
         tex = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, tex)
@@ -766,7 +979,7 @@ class Renderer:
             height,
             0,
             external_format,
-            GL_UNSIGNED_BYTE,
+            data_type,
             data,
         )
         glBindTexture(GL_TEXTURE_2D, 0)
@@ -774,6 +987,28 @@ class Renderer:
         return tex
 
     # --- New Texture Creation / Update Functions ---
+    @staticmethod
+    def extract_float_rgb_frame(frame: av.VideoFrame) -> np.ndarray | None:
+        frame_format = frame.format.name.lower()
+        if "gbr" not in frame_format or "pf32" not in frame_format:
+            return None
+
+        data = frame.to_ndarray()
+        if data.ndim != 3:
+            return None
+
+        if data.shape[0] in (3, 4):
+            image = np.moveaxis(data, 0, -1).astype(np.float32, copy=False)
+        elif data.shape[2] in (3, 4):
+            image = data.astype(np.float32, copy=False)
+        else:
+            return None
+
+        if image.shape[2] == 3:
+            alpha = np.ones((image.shape[0], image.shape[1], 1), dtype=np.float32)
+            image = np.concatenate([image, alpha], axis=2)
+        return image
+
     def create_textures(self, video_data: VideoData):
 
         textures = {}
@@ -783,9 +1018,38 @@ class Renderer:
             print("create_textures: no frame available, skipping texture creation")
             # Leave video_data.status as LOADED so we can retry next frame
             return
-        frame_format = frame.format.name.lower()
 
-        if frame_format == "nv12":
+        if isinstance(frame, np.ndarray):
+            internal_format = GL_RGBA16F if video_data.hdr_still else GL_RGBA8
+            data_type = GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            textures["RGB"] = self.create_texture(
+                video_data.width,
+                video_data.height,
+                frame,
+                internal_format,
+                GL_RGBA,
+                [0, 0, 0, 1.0],
+                data_type,
+            )
+            video_data.frame_pix_format = VideoFrameFormat.RGB
+            video_data.textures = textures
+            return
+
+        frame_format = frame.format.name.lower()
+        float_rgb = self.extract_float_rgb_frame(frame)
+
+        if float_rgb is not None:
+            textures["RGB"] = self.create_texture(
+                video_data.width,
+                video_data.height,
+                float_rgb,
+                GL_RGBA16F,
+                GL_RGBA,
+                [0, 0, 0, 1.0],
+                GL_FLOAT,
+            )
+            video_data.frame_pix_format = VideoFrameFormat.RGB
+        elif frame_format == "nv12":
             y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(
                 video_data.height, video_data.width
             )
@@ -830,26 +1094,14 @@ class Renderer:
 
             video_data.frame_pix_format = VideoFrameFormat.YUVJ420p
 
-        elif "rgba" in frame_format:
-            rgba_data = frame.to_ndarray()
+        elif "rgba" in frame_format or "rgb" in frame_format:
+            rgba_data = frame.to_ndarray(format="rgba")
             textures["RGB"] = self.create_texture(
                 video_data.width,
                 video_data.height,
                 rgba_data,
                 GL_RGBA8,
                 GL_RGBA,
-                [0, 0, 0, 1.0],
-            )
-            video_data.frame_pix_format = VideoFrameFormat.RGB
-
-        elif "rgb" in frame_format:
-            rgb_data = frame.to_ndarray()
-            textures["RGB"] = self.create_texture(
-                video_data.width,
-                video_data.height,
-                rgb_data,
-                GL_RGB8,
-                GL_RGB,
                 [0, 0, 0, 1.0],
             )
             video_data.frame_pix_format = VideoFrameFormat.RGB
@@ -881,9 +1133,42 @@ class Renderer:
 
         if frame is None:
             return
-        frame_format = frame.format.name.lower()
 
-        if frame_format == "nv12":
+        if isinstance(frame, np.ndarray):
+            data_type = GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
+            glTexSubImage2D(
+                GL_TEXTURE_2D,
+                0,
+                0,
+                0,
+                video_data.width,
+                video_data.height,
+                GL_RGBA,
+                data_type,
+                frame,
+            )
+            glBindTexture(GL_TEXTURE_2D, 0)
+            return
+
+        frame_format = frame.format.name.lower()
+        float_rgb = self.extract_float_rgb_frame(frame)
+
+        if float_rgb is not None:
+            glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
+            glTexSubImage2D(
+                GL_TEXTURE_2D,
+                0,
+                0,
+                0,
+                video_data.width,
+                video_data.height,
+                GL_RGBA,
+                GL_FLOAT,
+                float_rgb,
+            )
+            glBindTexture(GL_TEXTURE_2D, 0)
+        elif frame_format == "nv12":
             y_plane = np.frombuffer(frame.planes[0], dtype=np.uint8).reshape(
                 video_data.height, video_data.width
             )
@@ -933,8 +1218,8 @@ class Renderer:
 
             glBindTexture(GL_TEXTURE_2D, 0)
 
-        elif "rgba" in frame_format:
-            rgb_data = frame.to_ndarray()
+        elif "rgba" in frame_format or "rgb" in frame_format:
+            rgba_data = frame.to_ndarray(format="rgba")
             glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
             glTexSubImage2D(
                 GL_TEXTURE_2D,
@@ -945,7 +1230,7 @@ class Renderer:
                 video_data.height,
                 GL_RGBA,
                 GL_UNSIGNED_BYTE,
-                rgb_data,
+                rgba_data,
             )
             glBindTexture(GL_TEXTURE_2D, 0)
         elif "gray" in frame_format:
@@ -959,21 +1244,6 @@ class Renderer:
                 video_data.width,
                 video_data.height,
                 GL_RED,
-                GL_UNSIGNED_BYTE,
-                rgb_data,
-            )
-            glBindTexture(GL_TEXTURE_2D, 0)
-        elif "rgb" in frame_format:
-            rgb_data = frame.to_ndarray()
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
-            glTexSubImage2D(
-                GL_TEXTURE_2D,
-                0,
-                0,
-                0,
-                video_data.width,
-                video_data.height,
-                GL_RGB,
                 GL_UNSIGNED_BYTE,
                 rgb_data,
             )
@@ -1203,10 +1473,13 @@ class Renderer:
 
     def setup_postprocess_resources(self):
         self.scene_fbo, self.scene_color_tex = self.create_scene_fbo(
-            self.window_size[0], self.window_size[1]
+            self.scene_size[0], self.scene_size[1], hdr=True
         )
-        self.bloom_w = max(1, self.window_size[0] // 4)
-        self.bloom_h = max(1, self.window_size[1] // 4)
+        self.output_fbo, self.output_color_tex = self.create_scene_fbo(
+            self.scene_size[0], self.scene_size[1], hdr=False
+        )
+        self.bloom_w = max(1, self.scene_size[0] // 4)
+        self.bloom_h = max(1, self.scene_size[1] // 4)
         (
             self.bloom_fbo,
             self.bloom_tex,
@@ -1216,7 +1489,7 @@ class Renderer:
         self.post_VAO, self.post_VBO, self.post_EBO = self.create_postprocess_quad()
 
     @staticmethod
-    def create_scene_fbo(width: int, height: int):
+    def create_scene_fbo(width: int, height: int, hdr: bool = True):
         fbo = glGenFramebuffers(1)
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
 
@@ -1229,12 +1502,12 @@ class Renderer:
         glTexImage2D(
             GL_TEXTURE_2D,
             0,
-            GL_RGBA16F,
+            GL_RGBA16F if hdr else GL_RGBA8,
             width,
             height,
             0,
             GL_RGBA,
-            GL_HALF_FLOAT,
+            GL_HALF_FLOAT if hdr else GL_UNSIGNED_BYTE,
             None,
         )
         glFramebufferTexture2D(
@@ -1242,7 +1515,7 @@ class Renderer:
         )
 
         status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
-        if status != GL_FRAMEBUFFER_COMPLETE:
+        if hdr and status != GL_FRAMEBUFFER_COMPLETE:
             print(
                 f"[Renderer] RGBA16F FBO unsupported (0x{status:04X}), falling back to RGBA8."
             )
@@ -1262,8 +1535,8 @@ class Renderer:
             )
 
             status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
-            if status != GL_FRAMEBUFFER_COMPLETE:
-                raise RuntimeError(f"Scene FBO incomplete after fallback: 0x{status:04X}")
+        if status != GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError(f"Scene FBO incomplete: 0x{status:04X}")
 
         glBindTexture(GL_TEXTURE_2D, 0)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
@@ -1381,7 +1654,7 @@ class Renderer:
         horizontal = True
         first = True
         last_tex = self.bloom_tex
-        for _ in range(6):
+        for _ in range(self.bloom_blur_passes):
             target = 0 if horizontal else 1
             glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_pingpong_fbo[target])
             self.set_parameters({"horizontal": 1 if horizontal else 0})
@@ -1400,7 +1673,8 @@ class Renderer:
     def draw_tonemap_pass(self):
         current_shader = self.current_shader
         glDisable(GL_BLEND)
-        glViewport(0, 0, self.window_size[0], self.window_size[1])
+        glBindFramebuffer(GL_FRAMEBUFFER, self.output_fbo)
+        glViewport(0, 0, self.scene_size[0], self.scene_size[1])
         glClearColor(0.0, 0.0, 0.0, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
@@ -1425,6 +1699,7 @@ class Renderer:
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
         glBindTexture(GL_TEXTURE_2D, 0)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
         if current_shader:
             self.set_shader(current_shader)
