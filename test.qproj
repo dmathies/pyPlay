@@ -1,0 +1,368 @@
+{
+    "fileFormatVersion":  6,
+    "showSettings":  {
+                         "title":  "Test Layer Stack",
+                         "description":  "5 simultaneous light layers for pyPlay testing",
+                         "author":  "Codex",
+                         "date":  "2026-03-02T00:00:00+01:00",
+                         "audioLatency":  100,
+                         "audioOutputDriver":  0,
+                         "audioOutputDevice":  "0: Realtek HD Audio 2nd output (Re (2 channels) (Wave)",
+                         "oscNIC":  "192.168.0.69",
+                         "oscRXPort":  8000,
+                         "oscTXPort":  9000,
+                         "enableRemoteControl":  true,
+                         "isRemoteHost":  true,
+                         "syncShowFileOnSave":  true,
+                         "nodeName":  "Video1",
+                         "remoteNodes":  [
+                                             {
+                                                 "name":  "Video2",
+                                                 "address":  "192.168.0.69"
+                                             }
+                                         ],
+                         "mscRXPort":  6004,
+                         "mscTXPort":  6004,
+                         "mscRXDevice":  112,
+                         "mscTXDevice":  113,
+                         "mscExecutor":  -1,
+                         "mscPage":  -1
+                     },
+    "columnWidths":  [
+                         60,
+                         60,
+                         60,
+                         60,
+                         70,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60,
+                         60
+                     ],
+    "cues":  [
+                 {
+                     "$type":  "VideoCue",
+                     "path":  "Media/Light1.png",
+                     "shader":  "default_additive",
+                     "zIndex":  0,
+                     "alphaPath":  "",
+                     "alphaMode":  1,
+                     "startTime":  "00:00:00",
+                     "duration":  "00:00:00",
+                     "stompsOthers":  false,
+                     "dimmer":  1,
+                     "volume":  1,
+                     "fadeIn":  1,
+                     "fadeOut":  0,
+                     "fadeType":  1,
+                     "brightness":  1,
+                     "contrast":  1,
+                     "gamma":  1,
+                     "scale":  1,
+                     "rotation":  0,
+                     "offset":  {
+                                    "X":  0,
+                                    "Y":  0
+                                },
+                     "uniforms":  [
+
+                                  ],
+                     "playbackDuration":  "00:00:00",
+                     "xPos":  0,
+                     "yPos":  0,
+                     "shaderParameters":  [
+
+                                          ],
+                     "dmxAddress":  "1-1",
+                     "qid":  1001,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Light 1",
+                     "description":  "",
+                     "trigger":  1,
+                     "enabled":  true,
+                     "delay":  "00:00:00",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 },
+                 {
+                     "$type":  "VideoCue",
+                     "path":  "Media/Light2.png",
+                     "shader":  "default_additive",
+                     "zIndex":  1,
+                     "alphaPath":  "",
+                     "alphaMode":  1,
+                     "startTime":  "00:00:00",
+                     "duration":  "00:00:00",
+                     "stompsOthers":  false,
+                     "dimmer":  1,
+                     "volume":  1,
+                     "fadeIn":  1,
+                     "fadeOut":  0,
+                     "fadeType":  1,
+                     "brightness":  1,
+                     "contrast":  1,
+                     "gamma":  1,
+                     "scale":  1,
+                     "rotation":  0,
+                     "offset":  {
+                                    "X":  0,
+                                    "Y":  0
+                                },
+                     "uniforms":  [
+
+                                  ],
+                     "playbackDuration":  "00:00:00",
+                     "xPos":  0,
+                     "yPos":  0,
+                     "shaderParameters":  [
+
+                                          ],
+                     "dmxAddress":  "1-4",
+                     "qid":  1002,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Light 2",
+                     "description":  "",
+                     "trigger":  1,
+                     "enabled":  true,
+                     "delay":  "00:00:01",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 },
+                 {
+                     "$type":  "VideoCue",
+                     "path":  "Media/Light3.png",
+                     "shader":  "default_additive",
+                     "zIndex":  2,
+                     "alphaPath":  "",
+                     "alphaMode":  1,
+                     "startTime":  "00:00:00",
+                     "duration":  "00:00:00",
+                     "stompsOthers":  false,
+                     "dimmer":  1,
+                     "volume":  1,
+                     "fadeIn":  1,
+                     "fadeOut":  0,
+                     "fadeType":  1,
+                     "brightness":  1,
+                     "contrast":  1,
+                     "gamma":  1,
+                     "scale":  1,
+                     "rotation":  0,
+                     "offset":  {
+                                    "X":  0,
+                                    "Y":  0
+                                },
+                     "uniforms":  [
+
+                                  ],
+                     "playbackDuration":  "00:00:00",
+                     "xPos":  0,
+                     "yPos":  0,
+                     "shaderParameters":  [
+
+                                          ],
+                     "dmxAddress":  "1-7",
+                     "qid":  1003,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Light 3",
+                     "description":  "",
+                     "trigger":  1,
+                     "enabled":  true,
+                     "delay":  "00:00:02",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 },
+                 {
+                     "$type":  "VideoCue",
+                     "path":  "Media/Light4.png",
+                     "shader":  "default_additive",
+                     "zIndex":  3,
+                     "alphaPath":  "",
+                     "alphaMode":  1,
+                     "startTime":  "00:00:00",
+                     "duration":  "00:00:00",
+                     "stompsOthers":  false,
+                     "dimmer":  1,
+                     "volume":  1,
+                     "fadeIn":  1,
+                     "fadeOut":  0,
+                     "fadeType":  1,
+                     "brightness":  1,
+                     "contrast":  1,
+                     "gamma":  1,
+                     "scale":  1,
+                     "rotation":  0,
+                     "offset":  {
+                                    "X":  0,
+                                    "Y":  0
+                                },
+                     "uniforms":  [
+
+                                  ],
+                     "playbackDuration":  "00:00:00",
+                     "xPos":  0,
+                     "yPos":  0,
+                     "shaderParameters":  [
+
+                                          ],
+                     "dmxAddress":  "1-10",
+                     "qid":  1004,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Light 4",
+                     "description":  "",
+                     "trigger":  1,
+                     "enabled":  true,
+                     "delay":  "00:00:03",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 },
+                 {
+                     "$type":  "VideoCue",
+                     "path":  "Media/Light5.png",
+                     "shader":  "default_additive",
+                     "zIndex":  4,
+                     "alphaPath":  "",
+                     "alphaMode":  1,
+                     "startTime":  "00:00:00",
+                     "duration":  "00:00:00",
+                     "stompsOthers":  false,
+                     "dimmer":  1,
+                     "volume":  1,
+                     "fadeIn":  1,
+                     "fadeOut":  0,
+                     "fadeType":  1,
+                     "brightness":  1,
+                     "contrast":  1,
+                     "gamma":  1,
+                     "scale":  1,
+                     "rotation":  0,
+                     "offset":  {
+                                    "X":  0,
+                                    "Y":  0
+                                },
+                     "uniforms":  [
+
+                                  ],
+                     "playbackDuration":  "00:00:00",
+                     "xPos":  0,
+                     "yPos":  0,
+                     "shaderParameters":  [
+
+                                          ],
+                     "dmxAddress":  "1-13",
+                     "qid":  1005,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Light 5",
+                     "description":  "",
+                     "trigger":  1,
+                     "enabled":  true,
+                     "delay":  "00:00:00",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 },
+                 {
+                     "$type":  "ShaderParamsCue",
+                     "targetQid":  "post",
+                     "target":  "post",
+                     "uniforms":  [
+
+                                  ],
+                     "shaderParameters":  [
+                                              {
+                                                  "name":  "exposure",
+                                                  "value":  1
+                                              },
+                                              {
+                                                  "name":  "gammaOut",
+                                                  "value":  2.2
+                                              },
+                                              {
+                                                  "name":  "whitePoint",
+                                                  "value":  1
+                                              },
+                                              {
+                                                  "name":  "bloomStrength",
+                                                  "value":  0
+                                              },
+                                              {
+                                                  "name":  "bloomThreshold",
+                                                  "value":  1
+                                              },
+                                              {
+                                                  "name":  "sceneGammaIn",
+                                                  "value":  1
+                                              }
+                                          ],
+                     "fadeTime":  1,
+                     "fadeType":  1,
+                     "qid":  1100,
+                     "colour":  {
+                                    "r":  0,
+                                    "g":  0,
+                                    "b":  0,
+                                    "a":  1
+                                },
+                     "name":  "Post ToneMap",
+                     "description":  "Adjust global tone mapping",
+                     "trigger":  0,
+                     "enabled":  true,
+                     "delay":  "00:00:00",
+                     "loopMode":  0,
+                     "loopCount":  0,
+                     "remoteNode":  "Video2"
+                 }
+             ]
+}

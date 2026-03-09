@@ -1,0 +1,56 @@
+[
+  {
+    "id": 51966,
+    "model": 51966,
+    "category": 769,
+    "sw_version": 1985229328,
+    "DMX Sub Device Count": 0,
+    "sensor_count": 0,
+    "parameters": {
+      "RdmParamLampHours": 1,
+      "RdmParamManufacturerLabel": "GAOS",
+      "RdmParamDeviceLabel": "Video Player",
+      "RdmParamDeviceModelDescription": "DMX Media Player",
+      "RdmParamDmxPersonality": 1,
+      "RdmParamDmxStartAddress": 1,
+      "RdmParamDeviceHours": 1,
+      "RdmParamLampStrikes": 1,
+      "RdmParamLampState": 1,
+      "RdmParamCurve": 0,
+      "RdmParamFactoryDefaults": 1,
+      "RdmParamModulationFrequency": [
+        1,
+        1
+      ],
+      "RdmParamLanguageCapabilities": [
+        "EN"
+      ],
+      "RdmParamLanguage": "EN",
+      "RdmParamSoftwareVersionLabel": "GAOS Software Version",
+      "RdmParamBootSoftwareVersionId": 4660,
+      "RdmParamBootSoftwareVersionLabel": "GAOS Boot Software V"
+    },
+    "custom_parameters": [
+      ],
+    "dmx_personalities": [
+      {
+        "slots": 2,
+        "name": "Default Personality",
+        "slot_descriptions": [
+          {
+            "offset": 0,
+            "type": 0,
+            "label_id": 1,
+            "label": "Dimmer"
+          },
+          {
+            "offset": 1,
+            "type": 0,
+            "label_id": 65535,
+            "label": "Frame Number"
+          }
+        ]
+      }
+    ]
+  }
+]
