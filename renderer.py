@@ -110,6 +110,7 @@ class Renderer:
         self.last_fps_value = 0.0
         self.bloom_w = 0
         self.bloom_h = 0
+        # Runtime tuning/debug knobs for lower-power targets like the Pi.
         self.bloom_blur_passes = max(0, int(os.environ.get("PYPLAY_BLOOM_PASSES", "6")))
         self.show_fps_overlay = os.environ.get("PYPLAY_SHOW_FPS", "1") not in ("0", "false", "False")
         self.profile_interval = max(0.1, float(os.environ.get("PYPLAY_PROFILE_INTERVAL", "1.0")))

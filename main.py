@@ -22,7 +22,34 @@ from video_handler import VideoHandler, VideoData
 from websocket_handler import WS_EVENT, WebSocketHandler
 from ndi_output import NDIConfig, NDIOutput
 
+USAGE_TEXT = """\
+Usage:
+  python main.py [options] [cue_file]
+
+Options:
+  --single-screen        Render to a single debug window.
+  --no-post              Disable bloom/tonemap postprocessing.
+  --profile              Print periodic render timing breakdowns.
+  --warp-mesh NxM        Set output warp mesh resolution, e.g. 16x16 or 8.
+  --scene-scale S        Internal scene scale from 0.1 to 1.0, e.g. 0.8.
+  --ndi                  Enable NDI output.
+  --ndi-name NAME        Set the NDI stream name.
+  --help                 Show this help text.
+
+Profile environment variables:
+  PYPLAY_BLOOM_PASSES    Bloom blur passes. Default: 6.
+  PYPLAY_SHOW_FPS        Enable on-screen FPS overlay. Default: 1.
+  PYPLAY_PROFILE_INTERVAL
+                         Seconds between profile prints. Default: 1.0.
+  PYPLAY_PROFILE_CUES    Include slowest per-cue timings. Default: 0.
+  PYPLAY_PROFILE_GPU     Insert glFinish around measured stages. Default: 0.
+"""
+
 args = sys.argv[1:]
+if "--help" in args:
+    print(USAGE_TEXT)
+    raise SystemExit(0)
+
 single_screen = False
 if "--single-screen" in args:
     single_screen = True
@@ -185,7 +212,13 @@ def main():
     video_handler = VideoHandler()
     ndi_output = NDIOutput(NDIConfig(enabled=ndi_enabled, name=ndi_name))
 
-    cue_engine = CueEngine(qplayer_config.cues, renderer, video_handler, base_path)
+    cue_engine = CueEngine(
+        qplayer_config.cues,
+        renderer,
+        video_handler,
+        base_path,
+        profile_enabled=profile_render,
+    )
 
     mask_data = VideoData()
     load_video(cue_engine.resolve_path("Mask.jpg"), mask_data)

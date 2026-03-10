@@ -90,7 +90,12 @@ class ActiveCue:
 
 class CueEngine:
     def __init__(
-        self, cues: list[CueUnion], renderer, video_handler: VideoHandler, base_path: str
+        self,
+        cues: list[CueUnion],
+        renderer,
+        video_handler: VideoHandler,
+        base_path: str,
+        profile_enabled: bool = False,
     ):
 
         self.callback = None
@@ -107,6 +112,7 @@ class CueEngine:
         self.dmx_state: dict[int, list[int]] = {}
         self._last_dmx_debug_time = 0.0
         self.base_path = base_path
+        self.profile_enabled = profile_enabled
 
         self.set_cues(cues)
 
@@ -327,15 +333,17 @@ class CueEngine:
                     key: old.get(key, value)
                     for key, value in active_cue.shader_parameters.items()
                 }
-                print(
-                    f"[ShaderParamsCue] Started qid={active_cue.qid} target=post "
-                    f"fadeIn={active_cue.media_fadeIn} params={active_cue.shader_parameters}"
-                )
+                if self.profile_enabled:
+                    print(
+                        f"[ShaderParamsCue] Started qid={active_cue.qid} target=post "
+                        f"fadeIn={active_cue.media_fadeIn} params={active_cue.shader_parameters}"
+                    )
             else:
-                print(
-                    f"[ShaderParamsCue] Started qid={active_cue.qid} target={cue.videoQid} "
-                    f"fadeIn={active_cue.media_fadeIn} params={active_cue.shader_parameters}"
-                )
+                if self.profile_enabled:
+                    print(
+                        f"[ShaderParamsCue] Started qid={active_cue.qid} target={cue.videoQid} "
+                        f"fadeIn={active_cue.media_fadeIn} params={active_cue.shader_parameters}"
+                    )
 
         pygame.event.post(pygame.event.Event(CUE_EVENT, data=active_cue))
 
@@ -476,15 +484,18 @@ class CueEngine:
                             blended[key] = new_val
 
                     self.renderer.set_post_parameters(blended)
-                    print(
-                        f"[ShaderParamsCue] Apply qid={active_cue.qid} target=post "
-                        f"alpha={alpha:.3f} blended={blended}"
-                    )
+                    
+                    if self.profile_enabled:
+                        print(
+                            f"[ShaderParamsCue] Apply qid={active_cue.qid} target=post "
+                            f"alpha={alpha:.3f} blended={blended}"
+                        )
 
                     if alpha == 1.0:
-                        print(
-                            f"[ShaderParamsCue] Complete qid={active_cue.qid} target=post"
-                        )
+                        if self.profile_enabled:
+                            print(
+                                f"[ShaderParamsCue] Complete qid={active_cue.qid} target=post"
+                            )
                         active_cue.complete = True
                     continue
 
@@ -510,23 +521,26 @@ class CueEngine:
                         old = match.shader_parameters_original
                         new = active_cue.shader_parameters
                         self.interpolate_dicts(match.shader_parameters, old, new, alpha)
-                        print(
-                            f"[ShaderParamsCue] Apply qid={active_cue.qid} "
-                            f"target={active_cue.cue.videoQid} alpha={alpha:.3f}"
-                        )
+                        if self.profile_enabled:
+                            print(
+                                f"[ShaderParamsCue] Apply qid={active_cue.qid} "
+                                f"target={active_cue.cue.videoQid} alpha={alpha:.3f}"
+                            )
                         # print(f"Interpolated shader parameters: {match.shader_parameters}")
 
                     if alpha == 1.0:
-                        print(
-                            f"[ShaderParamsCue] Complete qid={active_cue.qid} "
+                        if self.profile_enabled:
+                            print(
+                                f"[ShaderParamsCue] Complete qid={active_cue.qid} "
                             f"target={active_cue.cue.videoQid}"
                         )
                         active_cue.complete = True
                 else:
-                    print(
-                        f"[ShaderParamsCue] Missing target qid={active_cue.cue.videoQid} "
-                        f"for cue={active_cue.qid}; completing."
-                    )
+                    if self.profile_enabled:
+                        print(
+                            f"[ShaderParamsCue] Missing target qid={active_cue.cue.videoQid} "
+                            f"for cue={active_cue.qid}; completing."
+                        )
                     active_cue.complete = True
             elif isinstance(active_cue.cue, VideoCue):
                 # Optional per-cue DMX RGB control. Missing/invalid address means no change.
@@ -534,7 +548,7 @@ class CueEngine:
                 if active_cue.shader_parameters is None:
                     active_cue.shader_parameters = {}
                 active_cue.shader_parameters["dmxColor"] = dmx_color
-                if print_dmx_debug and active_cue.cue.dmxAddress:
+                if self.profile_enabled and print_dmx_debug and active_cue.cue.dmxAddress:
                     print(
                         f"[DMX] cue={active_cue.qid} addr={active_cue.cue.dmxAddress} "
                         f"rgb=({dmx_color[0]:.3f}, {dmx_color[1]:.3f}, {dmx_color[2]:.3f})"

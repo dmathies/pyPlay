@@ -117,8 +117,11 @@ class OSCHandler:
 
     def client_beacon(self):
         while True:
-            self.client.send_message("/qplayer/remote/discovery", self.name)
-            # print(f"Beacon: {self.name}")
+            try:
+                self.client.send_message("/qplayer/remote/discovery", self.name)
+                # print(f"Beacon: {self.name}")
+            except OSError as exc:
+                print(f"[OSC] Discovery beacon send failed: {exc}")
             time.sleep(1)
 
     def start_server(self):
