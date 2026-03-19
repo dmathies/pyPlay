@@ -33,7 +33,10 @@ Options:
   --warp-mesh NxM        Set output warp mesh resolution, e.g. 16x16 or 8.
   --scene-scale S        Internal scene scale from 0.1 to 1.0, e.g. 0.8.
   --ndi                  Enable NDI output.
+  --ndi-only             Hidden-window NDI-only mode. Implies --ndi and --single-screen.
   --ndi-name NAME        Set the NDI stream name.
+  --ndi-size WxH         Downscale NDI output before sending, e.g. 320x180.
+  --ndi-fps N            Limit NDI send rate, e.g. 10.
   --help                 Show this help text.
 
 Profile environment variables:
@@ -43,6 +46,7 @@ Profile environment variables:
                          Seconds between profile prints. Default: 1.0.
   PYPLAY_PROFILE_CUES    Include slowest per-cue timings. Default: 0.
   PYPLAY_PROFILE_GPU     Insert glFinish around measured stages. Default: 0.
+  PYPLAY_NDI_DEBUG       Print NDI capture/send debug logs. Default: 0.
 """
 
 args = sys.argv[1:]
@@ -54,6 +58,14 @@ single_screen = False
 if "--single-screen" in args:
     single_screen = True
     args = [a for a in args if a != "--single-screen"]
+
+hidden_window = False
+ndi_only = False
+if "--ndi-only" in args:
+    ndi_only = True
+    hidden_window = True
+    single_screen = True
+    args = [a for a in args if a != "--ndi-only"]
 
 disable_postprocess = False
 if "--no-post" in args:
@@ -100,12 +112,40 @@ ndi_enabled = False
 if "--ndi" in args:
     ndi_enabled = True
     args = [a for a in args if a != "--ndi"]
+if ndi_only:
+    ndi_enabled = True
 
 ndi_name = "pyPlay NDI"
 if "--ndi-name" in args:
     idx = args.index("--ndi-name")
     if idx + 1 < len(args):
         ndi_name = args[idx + 1]
+        args = args[:idx] + args[idx + 2 :]
+    else:
+        args = args[:idx]
+
+ndi_size = (0, 0)
+if "--ndi-size" in args:
+    idx = args.index("--ndi-size")
+    if idx + 1 < len(args):
+        size_value = args[idx + 1].lower()
+        args = args[:idx] + args[idx + 2 :]
+        try:
+            width_text, height_text = size_value.split("x", 1)
+            ndi_size = (max(1, int(width_text)), max(1, int(height_text)))
+        except ValueError:
+            ndi_size = (0, 0)
+    else:
+        args = args[:idx]
+
+ndi_fps = 25
+if "--ndi-fps" in args:
+    idx = args.index("--ndi-fps")
+    if idx + 1 < len(args):
+        try:
+            ndi_fps = max(1, int(args[idx + 1]))
+        except ValueError:
+            ndi_fps = 25
         args = args[:idx] + args[idx + 2 :]
     else:
         args = args[:idx]
@@ -204,13 +244,23 @@ def main():
 
     renderer = Renderer(
         single_screen=single_screen,
+        hidden_window=hidden_window,
         enable_postprocess=not disable_postprocess,
         profile_render=profile_render,
         warp_mesh=warp_mesh,
         scene_scale=scene_scale,
+        hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),
     )
     video_handler = VideoHandler()
-    ndi_output = NDIOutput(NDIConfig(enabled=ndi_enabled, name=ndi_name))
+    ndi_output = NDIOutput(
+        NDIConfig(
+            enabled=ndi_enabled,
+            name=ndi_name,
+            width=ndi_size[0],
+            height=ndi_size[1],
+            fps=ndi_fps,
+        )
+    )
 
     cue_engine = CueEngine(
         qplayer_config.cues,
@@ -458,7 +508,7 @@ def main():
             frame_for_ndi = renderer.render_frame(
                 cue_engine.active_cues, capture_frame=ndi_output.enabled
             )
-            if ndi_output.enabled and frame_for_ndi is not None:
+            if ndi_output.enabled:
                 ndi_output.send_rgb_frame(frame_for_ndi)
             
             # --- FPS calculation ---

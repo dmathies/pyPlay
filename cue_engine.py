@@ -55,6 +55,7 @@ class ActiveCue:
         self.state_reported: Optional[CueStatus] = CueStatus.EMPTY
         self.shader_parameters: Optional[dict[str, float]] = None
         self.shader_parameters_original: Optional[dict[str, float]] = None
+        self.playback_clock_started = not isinstance(cue, VideoCue)
 
     def pause(self):
         self.paused = True
@@ -64,6 +65,15 @@ class ActiveCue:
         pause_time = time.time() - self.pause_time
         self.cue_start_time += pause_time
         self.paused = False
+
+    def start_playback_clock(self, now: Optional[float] = None):
+        if self.playback_clock_started:
+            return
+
+        self.cue_start_time = time.time() if now is None else now
+        if self.paused:
+            self.pause_time = self.cue_start_time
+        self.playback_clock_started = True
 
     def position(self):
         if (
@@ -157,6 +167,20 @@ class CueEngine:
 
         self.dmx_state[universe] = values
 
+    def apply_initial_video_shader_parameters(self, active_cue: ActiveCue, cue: VideoCue):
+        if active_cue.shader_parameters is None:
+            active_cue.shader_parameters = {}
+
+        active_cue.shader_parameters["brightness"] = cue.brightness
+        active_cue.shader_parameters["contrast"] = cue.contrast
+        active_cue.shader_parameters["gamma"] = cue.gamma
+        active_cue.shader_parameters["dmxColor"] = self.get_dmx_rgb(cue.dmxAddress)
+        active_cue.shader_parameters["dimmer"] = cue.dimmer
+        active_cue.shader_parameters["rotation"] = cue.rotation
+        active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
+        active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
+        active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+
     def stop(self, cue_id: Optional[str] = None):
         if cue_id is None:
             for cue in self.active_cues:
@@ -225,6 +249,8 @@ class CueEngine:
                     match.alpha_video_data.seek_start()
 
                     match.cue_start_time = time.time()
+                    match.playback_clock_started = False
+                    match.alpha = 0.0
 
                     match.media_startTime = cue.startTime or timedelta()
                     match.media_duration = cue.duration or timedelta()
@@ -237,15 +263,7 @@ class CueEngine:
                     match.shader_parameters = self.shader_params_to_dict(
                         cue.shaderParameters
                     )
-                    match.shader_parameters["brightness"] = cue.brightness
-                    match.shader_parameters["contrast"] = cue.contrast
-                    match.shader_parameters["gamma"] = cue.gamma
-                    match.shader_parameters["dmxColor"] = (1.0, 1.0, 1.0)
-                    match.shader_parameters["dimmer"] = cue.dimmer
-                    match.shader_parameters["rotation"] = cue.rotation
-                    match.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
-                    match.shader_parameters["scale"] = (cue.scale, cue.scale)
-                    match.shader_parameters_original = match.shader_parameters.copy()
+                    self.apply_initial_video_shader_parameters(match, cue)
                 elif isinstance(cue, VideoFraming):
                     match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
@@ -311,15 +329,8 @@ class CueEngine:
         active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
 
         if isinstance(cue, VideoCue):
-            active_cue.shader_parameters["brightness"] = cue.brightness
-            active_cue.shader_parameters["contrast"] = cue.contrast
-            active_cue.shader_parameters["gamma"] = cue.gamma
-            active_cue.shader_parameters["dmxColor"] = (1.0, 1.0, 1.0)
-            active_cue.shader_parameters["dimmer"] = cue.dimmer
-            active_cue.shader_parameters["rotation"] = cue.rotation
-            active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
-            active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
-            active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+            active_cue.playback_clock_started = False
+            self.apply_initial_video_shader_parameters(active_cue, cue)
 
             self.video_handler.load_video_async(self.resolve_path(cue.path), active_cue.video_data)
             if cue.alphaPath:
@@ -381,6 +392,10 @@ class CueEngine:
         print_dmx_debug = (now - self._last_dmx_debug_time) >= 1.0
 
         for active_cue in self.active_cues:
+            if isinstance(active_cue.cue, VideoCue) and not active_cue.playback_clock_started:
+                active_cue.alpha = 0.0
+                continue
+
             if not active_cue.paused:
                 runtime: float = now - active_cue.cue_start_time
                 if active_cue.media_fadeIn > 0.0:

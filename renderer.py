@@ -58,10 +58,12 @@ class Renderer:
     def __init__(
         self,
         single_screen: bool = False,
+        hidden_window: bool = False,
         enable_postprocess: bool = True,
         profile_render: bool = False,
         warp_mesh: tuple[int, int] = (16, 16),
         scene_scale: float = 1.0,
+        hidden_window_size: tuple[int, int] = (1280, 720),
     ):
 
         self.mask_data = None
@@ -78,11 +80,13 @@ class Renderer:
         self.alpha = 0.0
         self.SHADERS = {}
         self.current_shader = None
-        self.single_screen = single_screen
+        self.hidden_window = hidden_window
+        self.single_screen = single_screen or hidden_window
         self.enable_postprocess = enable_postprocess
         self.profile_render = profile_render
         self.warp_mesh = warp_mesh
         self.scene_scale = scene_scale
+        self.hidden_window_size = hidden_window_size
         self.scene_fbo = 0
         self.scene_color_tex = 0
         self.output_fbo = 0
@@ -117,6 +121,8 @@ class Renderer:
         self._last_profile_print = 0.0
         self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
         self.profile_gpu = os.environ.get("PYPLAY_PROFILE_GPU", "0") in ("1", "true", "True")
+        self.ndi_debug = os.environ.get("PYPLAY_NDI_DEBUG", "0") in ("1", "true", "True")
+        self._last_ndi_capture_debug = 0.0
         self.identity_homography = np.eye(3, dtype=np.float32).flatten()
 
         pygame.init()
@@ -153,7 +159,16 @@ class Renderer:
         sizes = pygame.display.get_desktop_sizes()
         self.left_w, self.left_h = sizes[0]
 
-        if self.single_screen or len(sizes) < 2:
+        if self.hidden_window:
+            hidden_w = max(1, self.hidden_window_size[0])
+            hidden_h = max(1, self.hidden_window_size[1])
+            self.window_size = (hidden_w, hidden_h)
+            self.left_w, self.height = self.window_size
+            self.right_w, self.right_h = 0, self.height
+            self.screen = pygame.display.set_mode(
+                self.window_size, pygame.DOUBLEBUF | pygame.OPENGL | pygame.HIDDEN, vsync=1
+            )
+        elif self.single_screen or len(sizes) < 2:
             # Debug mode: one windowed output on a single display.
             debug_w = min(1280, self.left_w)
             debug_h = min(720, self.left_h)
@@ -317,6 +332,7 @@ class Renderer:
 
                 if active_cue.alpha_video_data.status == VideoStatus.EMPTY:
                     if active_cue.video_data.status == VideoStatus.READY:
+                        active_cue.start_playback_clock()
                         scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
@@ -343,6 +359,7 @@ class Renderer:
                         active_cue.video_data.status == VideoStatus.READY
                         and active_cue.alpha_video_data.status == VideoStatus.READY
                     ):
+                        active_cue.start_playback_clock()
                         scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
@@ -1707,12 +1724,20 @@ class Renderer:
 
     def capture_output_frame_rgb(self):
         width, height = self.window_size
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glPixelStorei(GL_PACK_ALIGNMENT, 1)
-        data = glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE)
+        data = glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE)
         if data is None:
+            if self.ndi_debug:
+                print("[NDI] glReadPixels returned no data")
             return None
-        frame = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 3)
-        return np.flipud(frame).copy()
+        frame = np.frombuffer(data, dtype=np.uint8).reshape(height, width, 4)
+        if self.ndi_debug:
+            now = time.time()
+            if now - self._last_ndi_capture_debug >= 1.0:
+                print(f"[NDI] Captured framebuffer {width}x{height}")
+                self._last_ndi_capture_debug = now
+        return np.flipud(frame[:, :, :3]).copy()
 
     def draw_fps_overlay(self):
         if self.fps_font is None:

@@ -98,9 +98,14 @@ class ArtNet:
         empty: list[Any] = []
 
         readable: list[socket.socket]
-        readable, writable, exceptional = select.select(self.sockets, empty, empty)
+        readable, writable, exceptional = select.select(self.sockets, empty, empty, 1.0)
         for s in readable:
-            (data, addr) = s.recvfrom(buffer_size)
+            try:
+                (data, addr) = s.recvfrom(buffer_size)
+            except OSError as exc:
+                print(f"[ArtNet] Socket receive failed: {exc}")
+                continue
+
             op_code = parse_header(data)
             # print (f"Got Packet: {op_code}")
 
@@ -115,19 +120,21 @@ class ArtNet:
                 if reply is None:
                     continue
 
-                subscriber(op_code, *addr, reply)  # type: ignore
+                try:
+                    subscriber(op_code, *addr, reply)  # type: ignore
+                except Exception as exc:
+                    print(f"[ArtNet] Subscriber {op_code.name} failed: {exc}")
 
     def listen(self, timeout: float | None = 3.0) -> None:
         """Listens for any incoming ArtNet packages."""
-
-        self.sock.settimeout(timeout)
-
-        try:
-            while True:
+        while True:
+            try:
                 self.receive()
-
-        except socket.timeout:
-            pass
+            except socket.timeout:
+                if timeout is not None:
+                    return
+            except OSError as exc:
+                print(f"[ArtNet] Listener socket error: {exc}")
 
     def send_poll(self) -> None:
         """Send an ArtPoll packet."""

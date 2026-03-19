@@ -2,6 +2,7 @@ import pygame
 import ArtNet
 import socket
 import os
+import time
 import numpy as np
 from ArtNet.client import ArtNetClient
 from ArtNet.helper import serialize_device_info, deserialize_device_info
@@ -46,59 +47,75 @@ class DMXHandler:
         self.config = CONFIG
 
     def dmx_receive(self, op_code, ip, port, reply):
-        base_addr = (
-            self.DEVICE_INFO[0]
-            .get("parameters")
-            .get(ArtNet.rdm.RdmParameterID.RdmParamDmxStartAddress)
-        )
-        uni = self.config.get("universe")
-        net = self.config.get("net")
-        sub = self.config.get("sub")
+        if not self.DEVICE_INFO:
+            return
 
-        universe = ArtNet.ArtNet.to_universe15bit(None, uni, net, sub)
+        try:
+            base_addr = (
+                self.DEVICE_INFO[0]
+                .get("parameters")
+                .get(ArtNet.rdm.RdmParameterID.RdmParamDmxStartAddress)
+            )
+            uni = self.config.get("universe")
+            net = self.config.get("net")
+            sub = self.config.get("sub")
 
-        if reply.get("Universe") == universe:
-            # DMX Message
-            fade_time = reply.get("Data")[base_addr + 2] / 10.0
+            universe = ArtNet.ArtNet.to_universe15bit(None, uni, net, sub)
+
+            if reply.get("Universe") != universe:
+                return
+
+            dmx_data = reply.get("Data") or []
+            required_length = base_addr + 23
+            if base_addr is None or base_addr <= 0 or len(dmx_data) < required_length:
+                print(
+                    f"[DMX] Ignoring short/invalid packet: base_addr={base_addr}, "
+                    f"data_len={len(dmx_data)}"
+                )
+                return
+
+            fade_time = dmx_data[base_addr + 2] / 10.0
             if fade_time == 0:
                 fade_time = 0.1
 
             event_data = {
                 "universe": int(uni) + 1,
-                "data": list(reply.get("Data")),
-                "dimmer": reply.get("Data")[base_addr - 1] / 255.0,
-                "video_index": reply.get("Data")[base_addr],
-                "video_mode": reply.get("Data")[base_addr + 1],
+                "data": list(dmx_data),
+                "dimmer": dmx_data[base_addr - 1] / 255.0,
+                "video_index": dmx_data[base_addr],
+                "video_mode": dmx_data[base_addr + 1],
                 "fade_time": fade_time,
                 "scale": [
-                    reply.get("Data")[base_addr + 3] / 128.0,
-                    reply.get("Data")[base_addr + 4] / 128.0,
+                    dmx_data[base_addr + 3] / 128.0,
+                    dmx_data[base_addr + 4] / 128.0,
                 ],
-                "rotation": reply.get("Data")[base_addr + 5] / 255.0 * np.pi * 2,
+                "rotation": dmx_data[base_addr + 5] / 255.0 * np.pi * 2,
                 "offset": [
-                    (reply.get("Data")[base_addr + 6] - 128.0) / 128.0,
-                    (reply.get("Data")[base_addr + 7] - 128) / 128.0,
+                    (dmx_data[base_addr + 6] - 128.0) / 128.0,
+                    (dmx_data[base_addr + 7] - 128) / 128.0,
                 ],
-                "brightness": (reply.get("Data")[base_addr + 8]) / 256.0,
-                "contrast": 1 - reply.get("Data")[base_addr + 9] / 256.0,
-                "gamma": 1 + reply.get("Data")[base_addr + 10] / 64.0,
-                "fr0_rotation": reply.get("Data")[base_addr + 11] / 256.0 * np.pi * 2,
-                "fr0_maskStart": 1.5 - reply.get("Data")[base_addr + 12] / 200.0,
-                "fr0_softness": reply.get("Data")[base_addr + 13] / 512.0,
-                "fr1_rotation": reply.get("Data")[base_addr + 14] / 256.0 * np.pi * 2,
-                "fr1_maskStart": 1.5 - reply.get("Data")[base_addr + 15] / 200.0,
-                "fr1_softness": reply.get("Data")[base_addr + 16] / 512.0,
-                "fr2_rotation": reply.get("Data")[base_addr + 17] / 256.0 * np.pi * 2,
-                "fr2_maskStart": 1.5 - reply.get("Data")[base_addr + 18] / 200.0,
-                "fr2_softness": reply.get("Data")[base_addr + 19] / 512.0,
-                "fr3_rotation": reply.get("Data")[base_addr + 20] / 256.0 * np.pi * 2,
-                "fr3_maskStart": 1.5 - reply.get("Data")[base_addr + 21] / 200.0,
-                "fr3_softness": reply.get("Data")[base_addr + 22] / 512.0,
+                "brightness": dmx_data[base_addr + 8] / 256.0,
+                "contrast": 1 - dmx_data[base_addr + 9] / 256.0,
+                "gamma": 1 + dmx_data[base_addr + 10] / 64.0,
+                "fr0_rotation": dmx_data[base_addr + 11] / 256.0 * np.pi * 2,
+                "fr0_maskStart": 1.5 - dmx_data[base_addr + 12] / 200.0,
+                "fr0_softness": dmx_data[base_addr + 13] / 512.0,
+                "fr1_rotation": dmx_data[base_addr + 14] / 256.0 * np.pi * 2,
+                "fr1_maskStart": 1.5 - dmx_data[base_addr + 15] / 200.0,
+                "fr1_softness": dmx_data[base_addr + 16] / 512.0,
+                "fr2_rotation": dmx_data[base_addr + 17] / 256.0 * np.pi * 2,
+                "fr2_maskStart": 1.5 - dmx_data[base_addr + 18] / 200.0,
+                "fr2_softness": dmx_data[base_addr + 19] / 512.0,
+                "fr3_rotation": dmx_data[base_addr + 20] / 256.0 * np.pi * 2,
+                "fr3_maskStart": 1.5 - dmx_data[base_addr + 21] / 200.0,
+                "fr3_softness": dmx_data[base_addr + 22] / 512.0,
             }
 
             if self.dmx_state != event_data:
                 self.dmx_state = event_data
                 pygame.event.post(pygame.event.Event(DMX_EVENT, data=event_data))
+        except Exception as exc:
+            print(f"[DMX] Failed to process packet from {ip}:{port}: {exc}")
 
     def rdm_callback(self, device_id: int, parameter_id: int, device_info: dict):
         print(device_id, parameter_id)
@@ -114,4 +131,9 @@ class DMXHandler:
         self.client.artnet.subscribe(ArtNet.OpCode.ArtDmx, self.dmx_receive)
         self.client.register_rdm_config_callback(self.rdm_callback)
         self.client.register_config_callback(self.config_changed_callback)
-        self.client.artnet.listen(timeout=30.0)
+        while True:
+            try:
+                self.client.artnet.listen(timeout=30.0)
+            except Exception as exc:
+                print(f"[DMX] Listener crashed, retrying: {exc}")
+                time.sleep(1.0)
