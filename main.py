@@ -30,6 +30,7 @@ Options:
   --single-screen        Render to a single debug window.
   --no-post              Disable bloom/tonemap postprocessing.
   --profile              Print periodic render timing breakdowns.
+  --show-fps             Show on-screen FPS overlay.
   --warp-mesh NxM        Set output warp mesh resolution, e.g. 16x16 or 8.
   --scene-scale S        Internal scene scale from 0.1 to 1.0, e.g. 0.8.
   --ndi                  Enable NDI output.
@@ -41,7 +42,7 @@ Options:
 
 Profile environment variables:
   PYPLAY_BLOOM_PASSES    Bloom blur passes. Default: 6.
-  PYPLAY_SHOW_FPS        Enable on-screen FPS overlay. Default: 1.
+  PYPLAY_SHOW_FPS        Enable on-screen FPS overlay. Default: 0.
   PYPLAY_PROFILE_INTERVAL
                          Seconds between profile prints. Default: 1.0.
   PYPLAY_PROFILE_CUES    Include slowest per-cue timings. Default: 0.
@@ -76,6 +77,11 @@ profile_render = False
 if "--profile" in args:
     profile_render = True
     args = [a for a in args if a != "--profile"]
+
+show_fps_overlay = False
+if "--show-fps" in args:
+    show_fps_overlay = True
+    args = [a for a in args if a != "--show-fps"]
 
 warp_mesh = (16, 16)
 if "--warp-mesh" in args:
@@ -247,6 +253,7 @@ def main():
         hidden_window=hidden_window,
         enable_postprocess=not disable_postprocess,
         profile_render=profile_render,
+        show_fps_overlay=show_fps_overlay,
         warp_mesh=warp_mesh,
         scene_scale=scene_scale,
         hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),

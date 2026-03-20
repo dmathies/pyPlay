@@ -61,6 +61,7 @@ class Renderer:
         hidden_window: bool = False,
         enable_postprocess: bool = True,
         profile_render: bool = False,
+        show_fps_overlay: bool = False,
         warp_mesh: tuple[int, int] = (16, 16),
         scene_scale: float = 1.0,
         hidden_window_size: tuple[int, int] = (1280, 720),
@@ -116,7 +117,9 @@ class Renderer:
         self.bloom_h = 0
         # Runtime tuning/debug knobs for lower-power targets like the Pi.
         self.bloom_blur_passes = max(0, int(os.environ.get("PYPLAY_BLOOM_PASSES", "6")))
-        self.show_fps_overlay = os.environ.get("PYPLAY_SHOW_FPS", "1") not in ("0", "false", "False")
+        self.show_fps_overlay = show_fps_overlay or (
+            os.environ.get("PYPLAY_SHOW_FPS", "0") not in ("0", "false", "False")
+        )
         self.profile_interval = max(0.1, float(os.environ.get("PYPLAY_PROFILE_INTERVAL", "1.0")))
         self._last_profile_print = 0.0
         self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
@@ -332,7 +335,8 @@ class Renderer:
 
                 if active_cue.alpha_video_data.status == VideoStatus.EMPTY:
                     if active_cue.video_data.status == VideoStatus.READY:
-                        active_cue.start_playback_clock()
+                        if hasattr(active_cue, "start_playback_clock"):
+                            active_cue.start_playback_clock()
                         scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
@@ -349,7 +353,11 @@ class Renderer:
                                 "resolution": self.scene_size,
                                 "time": self.clock.get_time()/1000,
                             })
-                            self.draw_texture_to_scene(active_cue.video_data, active_cue.alpha)
+                            self.draw_texture_to_scene(
+                                active_cue.video_data,
+                                active_cue.alpha,
+                                shader_parameters=active_cue.shader_parameters,
+                            )
                         cue_elapsed = time.perf_counter() - cue_start
                         cue_draw_time += cue_elapsed
                         if self.profile_cues:
@@ -359,7 +367,8 @@ class Renderer:
                         active_cue.video_data.status == VideoStatus.READY
                         and active_cue.alpha_video_data.status == VideoStatus.READY
                     ):
-                        active_cue.start_playback_clock()
+                        if hasattr(active_cue, "start_playback_clock"):
+                            active_cue.start_playback_clock()
                         scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
@@ -382,6 +391,7 @@ class Renderer:
                                 active_cue.alpha_video_data,
                                 active_cue.cue.alphaMode,
                                 active_cue.cue.alphaSoftness,
+                                active_cue.shader_parameters,
                             )
                         cue_elapsed = time.perf_counter() - cue_start
                         cue_draw_time += cue_elapsed
@@ -616,7 +626,7 @@ class Renderer:
             "resolution": self.scene_size,
             "time": self.clock.get_time()/1000,
         })
-        self.draw_texture_to_scene(video, alpha)
+        self.draw_texture_to_scene(video, alpha, shader_parameters=shader_parameters)
 
         self.set_shader("scene_light_additive")
         if shader_parameters:
@@ -625,7 +635,7 @@ class Renderer:
             "resolution": self.scene_size,
             "time": self.clock.get_time()/1000,
         })
-        self.draw_texture_to_scene(video, alpha)
+        self.draw_texture_to_scene(video, alpha, shader_parameters=shader_parameters)
 
     def draw_texture_to_scene(
         self,
@@ -634,6 +644,7 @@ class Renderer:
         alpha_video: VideoData | None = None,
         alphaMode=AlphaMode.Opaque,
         alphaSoftness=0.0,
+        shader_parameters: dict | None = None,
     ):
         # print(f"Draw Texture: alpha:{alpha}, alphaMode:{alphaMode},  video1Format: {video.frame_pix_format}")
 
@@ -663,10 +674,77 @@ class Renderer:
                                  "video1ColourSpace": video.colour_space})
 
         glViewport(0, 0, self.scene_size[0], self.scene_size[1])
+        scissor_box = self.compute_content_scissor(video, shader_parameters)
+        if scissor_box is not None:
+            glEnable(GL_SCISSOR_TEST)
+            glScissor(*scissor_box)
         glBindVertexArray(self.post_VAO)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
+        if scissor_box is not None:
+            glDisable(GL_SCISSOR_TEST)
         self.maybe_profile_sync()
+
+    def compute_content_scissor(
+        self,
+        video: VideoData,
+        shader_parameters: dict | None = None,
+    ) -> tuple[int, int, int, int] | None:
+        bounds = getattr(video, "content_bounds_uv", (0.0, 0.0, 1.0, 1.0))
+        if bounds == (0.0, 0.0, 1.0, 1.0):
+            return None
+
+        scale = (1.0, 1.0)
+        offset = (0.0, 0.0)
+        rotation = 0.0
+        if shader_parameters:
+            scale = shader_parameters.get("scale", scale)
+            offset = shader_parameters.get("offset", offset)
+            rotation = shader_parameters.get("rotation", rotation)
+
+        scale_x = float(scale[0]) if scale[0] != 0 else 1e-6
+        scale_y = float(scale[1]) if scale[1] != 0 else 1e-6
+        offset_x = float(offset[0])
+        offset_y = float(offset[1])
+        cos_r = np.cos(rotation)
+        sin_r = np.sin(rotation)
+
+        crop_points = (
+            (bounds[0], bounds[1]),
+            (bounds[2], bounds[1]),
+            (bounds[2], bounds[3]),
+            (bounds[0], bounds[3]),
+        )
+
+        scene_points = []
+        for tex_u, tex_v in crop_points:
+            shifted_x = tex_u - 0.5 - offset_x
+            shifted_y = tex_v - 0.5 - offset_y
+            base_x = cos_r * shifted_x + sin_r * shifted_y
+            base_y = -sin_r * shifted_x + cos_r * shifted_y
+            uv_x = (base_x / scale_x) + 0.5
+            uv_y = (base_y / scale_y) + 0.5
+            scene_points.append((uv_x, uv_y))
+
+        min_u = max(0.0, min(point[0] for point in scene_points))
+        max_u = min(1.0, max(point[0] for point in scene_points))
+        min_v = max(0.0, min(point[1] for point in scene_points))
+        max_v = min(1.0, max(point[1] for point in scene_points))
+
+        if min_u >= max_u or min_v >= max_v:
+            return None
+
+        width = self.scene_size[0]
+        height = self.scene_size[1]
+        x = int(np.floor(min_u * width))
+        y = int(np.floor((1.0 - max_v) * height))
+        w = int(np.ceil((max_u - min_u) * width))
+        h = int(np.ceil((max_v - min_v) * height))
+
+        if w <= 0 or h <= 0:
+            return None
+
+        return (x, y, w, h)
 
     def draw_output_warp(self, texture_id: int, flip_y: bool = False):
         self.maybe_profile_sync()

@@ -52,6 +52,7 @@ class VideoData:
         self.seek_start_seconds = 0.0
         self.hdr_still = False
         self.rgba_still = False
+        self.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
 
     def release(self):
         # Close AV container / decoder
@@ -69,6 +70,7 @@ class VideoData:
         self.status = VideoStatus.EMPTY
         self.hdr_still = False
         self.rgba_still = False
+        self.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
 
     def get_next_frame(self):
         if self.still:
@@ -129,6 +131,36 @@ def seek_to_time(container, stream, target_time):
     return None
 
 
+def find_content_bounds_uv(image: np.ndarray, threshold: float = 1e-6) -> tuple[float, float, float, float]:
+    height, width = image.shape[:2]
+    if width <= 0 or height <= 0:
+        return (0.0, 0.0, 1.0, 1.0)
+
+    if image.ndim < 3:
+        mask = np.abs(image) > threshold
+    else:
+        rgb_mask = np.any(np.abs(image[..., : min(3, image.shape[2])]) > threshold, axis=-1)
+        if image.shape[2] >= 4:
+            alpha_mask = np.abs(image[..., 3]) > threshold
+            mask = rgb_mask | alpha_mask
+        else:
+            mask = rgb_mask
+
+    non_zero = np.argwhere(mask)
+    if non_zero.size == 0:
+        return (0.0, 0.0, 1.0, 1.0)
+
+    min_y, min_x = non_zero.min(axis=0)
+    max_y, max_x = non_zero.max(axis=0)
+
+    return (
+        float(min_x) / float(width),
+        float(min_y) / float(height),
+        float(max_x + 1) / float(width),
+        float(max_y + 1) / float(height),
+    )
+
+
 def load_exr_still(path: str, video_data: VideoData):
     if OpenEXR is None or Imath is None:
         raise RuntimeError(
@@ -171,6 +203,7 @@ def load_exr_still(path: str, video_data: VideoData):
     video_data.hdr_still = True
     video_data.rgba_still = False
     video_data.current_frame = rgba
+    video_data.content_bounds_uv = find_content_bounds_uv(rgba)
     video_data.status = VideoStatus.LOADED
 
 
@@ -191,6 +224,7 @@ def load_rgba_still(path: str, video_data: VideoData):
     video_data.hdr_still = False
     video_data.rgba_still = True
     video_data.current_frame = rgba
+    video_data.content_bounds_uv = find_content_bounds_uv(rgba, threshold=0.0)
     video_data.status = VideoStatus.LOADED
 
 
@@ -249,6 +283,7 @@ def load_video(path, video_data=VideoData()):
         video_data.colour_space = colour_space
         video_data.still = still
         video_data.current_frame = video_data.seek_start()
+        video_data.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
 
         video_data.status = VideoStatus.LOADED
 
