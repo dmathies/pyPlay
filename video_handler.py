@@ -241,7 +241,7 @@ def load_video(path, video_data=VideoData()):
                 container = av.open(path, format="image2")
                 frame_pix_format = VideoFrameFormat.RGB
                 still = True
-        elif path.lower().endswith(".png"):
+        elif path.lower().endswith((".png", ".jpg", ".jpeg")):
             load_rgba_still(path, video_data)
             return video_data
         elif path.lower().endswith((".jpg", ".jpeg", ".png")):

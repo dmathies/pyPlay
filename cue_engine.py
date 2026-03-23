@@ -27,6 +27,8 @@ class ActiveCue:
     def __init__(self, cue: CueUnion):
         self.cue = cue
         self.alpha = 0.0
+        self.layer_alpha = 1.0
+        self.dmx_layer_alpha = 1.0
         self.dimmer = 1.0
         self.qid = str(cue.qid)
         self.cue_order = 0
@@ -120,6 +122,7 @@ class CueEngine:
         self.qid_list: list[str] = []
         self.qid_order: dict[str, int] = {}
         self.dmx_state: dict[int, list[int]] = {}
+        self.active_dmx_universe: Optional[int] = None
         self._last_dmx_debug_time = 0.0
         self.base_path = base_path
         self.profile_enabled = profile_enabled
@@ -166,19 +169,23 @@ class CueEngine:
             values.extend([0] * (512 - len(values)))
 
         self.dmx_state[universe] = values
+        self.active_dmx_universe = universe
 
     def apply_initial_video_shader_parameters(self, active_cue: ActiveCue, cue: VideoCue):
         if active_cue.shader_parameters is None:
             active_cue.shader_parameters = {}
 
+        dmx_color, dmx_layer_alpha = self.get_dmx_rgba(cue.dmxAddress)
+
         active_cue.shader_parameters["brightness"] = cue.brightness
         active_cue.shader_parameters["contrast"] = cue.contrast
         active_cue.shader_parameters["gamma"] = cue.gamma
-        active_cue.shader_parameters["dmxColor"] = self.get_dmx_rgb(cue.dmxAddress)
+        active_cue.shader_parameters["dmxColor"] = dmx_color
         active_cue.shader_parameters["dimmer"] = cue.dimmer
         active_cue.shader_parameters["rotation"] = cue.rotation
         active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
         active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
+        active_cue.dmx_layer_alpha = dmx_layer_alpha
         active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
 
     def stop(self, cue_id: Optional[str] = None):
@@ -189,15 +196,14 @@ class CueEngine:
 
         match = next((q for q in self.active_cues if q.qid == cue_id), None)
         if match:
-            if match.alpha == 1.0:
-                self.handle_stop(
-                    match,
-                    StopMode.Immediate,
-                    match.media_fadeType,
-                    match.media_fadeOut,
-                    LoopMode.OneShot,
-                    1,
-                )
+            self.handle_stop(
+                match,
+                StopMode.Immediate,
+                match.media_fadeType,
+                match.media_fadeOut,
+                LoopMode.OneShot,
+                1,
+            )
 
     def pause(self, cue_id: str):
         match = next((q for q in self.active_cues if q.qid == cue_id), None)
@@ -251,6 +257,8 @@ class CueEngine:
                     match.cue_start_time = time.time()
                     match.playback_clock_started = False
                     match.alpha = 0.0
+                    match.layer_alpha = 1.0
+                    match.dmx_layer_alpha = 1.0
 
                     match.media_startTime = cue.startTime or timedelta()
                     match.media_duration = cue.duration or timedelta()
@@ -433,7 +441,8 @@ class CueEngine:
 
                 # Still-image VideoCues with no explicit cue duration should persist until stopped.
                 if (
-                    isinstance(active_cue.cue, VideoCue)
+                    not active_cue.endLoop
+                    and isinstance(active_cue.cue, VideoCue)
                     and active_cue.video_data
                     and active_cue.video_data.still
                     and (
@@ -536,6 +545,23 @@ class CueEngine:
                         old = match.shader_parameters_original
                         new = active_cue.shader_parameters
                         self.interpolate_dicts(match.shader_parameters, old, new, alpha)
+
+                        # ShaderParams layerAlpha is a separate layer-opacity multiplier,
+                        # not the cue's internal fade timer alpha. Keep "alpha" as an alias.
+                        layer_alpha_value = None
+                        if "layerAlpha" in new:
+                            layer_alpha_value = new["layerAlpha"]
+                        elif "alpha" in new:
+                            layer_alpha_value = new["alpha"]
+
+                        if layer_alpha_value is not None:
+                            if active_cue.shader_parameters_original is None:
+                                active_cue.shader_parameters_original = {}
+                            if "layerAlpha" not in active_cue.shader_parameters_original:
+                                active_cue.shader_parameters_original["layerAlpha"] = match.layer_alpha
+                            start_alpha = active_cue.shader_parameters_original["layerAlpha"]
+                            match.layer_alpha = (1.0 - alpha) * start_alpha + alpha * layer_alpha_value
+
                         if self.profile_enabled:
                             print(
                                 f"[ShaderParamsCue] Apply qid={active_cue.qid} "
@@ -558,15 +584,17 @@ class CueEngine:
                         )
                     active_cue.complete = True
             elif isinstance(active_cue.cue, VideoCue):
-                # Optional per-cue DMX RGB control. Missing/invalid address means no change.
-                dmx_color = self.get_dmx_rgb(active_cue.cue.dmxAddress)
+                # Optional per-cue DMX RGB + layer alpha control. Missing/invalid address means no change.
+                dmx_color, dmx_layer_alpha = self.get_dmx_rgba(active_cue.cue.dmxAddress)
                 if active_cue.shader_parameters is None:
                     active_cue.shader_parameters = {}
                 active_cue.shader_parameters["dmxColor"] = dmx_color
+                active_cue.dmx_layer_alpha = dmx_layer_alpha
                 if self.profile_enabled and print_dmx_debug and active_cue.cue.dmxAddress:
                     print(
                         f"[DMX] cue={active_cue.qid} addr={active_cue.cue.dmxAddress} "
-                        f"rgb=({dmx_color[0]:.3f}, {dmx_color[1]:.3f}, {dmx_color[2]:.3f})"
+                        f"rgb=({dmx_color[0]:.3f}, {dmx_color[1]:.3f}, {dmx_color[2]:.3f}) "
+                        f"layerAlpha={dmx_layer_alpha:.3f}"
                     )
 
         if print_dmx_debug:
@@ -629,23 +657,30 @@ class CueEngine:
             return {}
         return {p.name: p.value for p in shader_params}
 
-    def get_dmx_rgb(self, dmx_address: Optional[str]) -> tuple[float, float, float]:
+    def get_dmx_rgb(self, dmx_address: Optional[int]) -> tuple[float, float, float]:
+        return self.get_dmx_rgba(dmx_address)[0]
+
+    def get_dmx_rgba(self, dmx_address: Optional[int]) -> tuple[tuple[float, float, float], float]:
         # No DMX address means cue is unaffected.
         if not dmx_address:
-            return 1.0, 1.0, 1.0
+            return (1.0, 1.0, 1.0), 1.0
 
-        match = re.match(r"^\s*(\d+)\s*-\s*(\d+)\s*$", dmx_address)
-        if not match:
-            return 1.0, 1.0, 1.0
+        channel = int(dmx_address)
+        universe = self.active_dmx_universe
+        if universe is None and self.dmx_state:
+            universe = next(iter(sorted(self.dmx_state.keys())))
 
-        universe = int(match.group(1))
-        channel = int(match.group(2))
+        if universe is None:
+            return (1.0, 1.0, 1.0), 1.0
+
         values = self.dmx_state.get(universe)
         if values is None:
-            return 1.0, 1.0, 1.0
+            return (1.0, 1.0, 1.0), 1.0
 
         if channel < 1 or channel > 510:
-            return 1.0, 1.0, 1.0
+            return (1.0, 1.0, 1.0), 1.0
 
         i = channel - 1
-        return values[i] / 255.0, values[i + 1] / 255.0, values[i + 2] / 255.0
+        rgb = (values[i] / 255.0, values[i + 1] / 255.0, values[i + 2] / 255.0)
+        layer_alpha = values[i + 3] / 255.0 if (i + 3) < len(values) else 1.0
+        return rgb, layer_alpha

@@ -186,7 +186,7 @@ class VideoCue(Cue):
     shader: str = "default"
     zIndex: int = 0
     alphaPath: Optional[str] = None
-    dmxAddress: Optional[str] = None  # "Universe-Channel" (e.g. "1-230")
+    dmxAddress: Optional[int] = None  # Start channel for RGB + optional layerAlpha on channel 4
     stompsOthers: bool = False
     alphaMode: Optional[AlphaMode] = AlphaMode.Opaque
     alphaSoftness: Optional[float] = 0.0
@@ -283,13 +283,16 @@ def parse_shader_param(p: dict[str, float]) -> ShaderParam:
 
 
 DMX_ADDRESS_PATTERN = re.compile(r"^\s*(\d+)\s*-\s*(\d+)\s*$")
+DMX_CHANNEL_PATTERN = re.compile(r"^\s*(\d+)\s*$")
 
 
-def parse_dmx_address(value: Any, cue_id: str = "") -> Optional[str]:
+def parse_dmx_address(value: Any, cue_id: str = "") -> Optional[int]:
     """
-    Parse DMX address in MagicQ style "Universe-Channel".
+    Parse a DMX start channel.
+    Preferred format is a simple integer/string channel number.
+    Legacy "Universe-Channel" input is also accepted; the universe part is ignored
+    because the active universe now comes from artnet_config / runtime DMX updates.
     RGB channels are assumed, so base channel must be 1..510.
-    Returns normalized "U-C" or None if invalid.
     """
     if value is None:
         return None
@@ -299,35 +302,38 @@ def parse_dmx_address(value: Any, cue_id: str = "") -> Optional[str]:
         return None
 
     # Treat the common "unpatched" sentinel as no DMX mapping.
-    if text == "0-0":
+    if text in ("0", "0-0"):
         return None
+
+    channel_match = DMX_CHANNEL_PATTERN.match(text)
+    if channel_match:
+        channel = int(channel_match.group(1))
+        if channel < 1 or channel > 510:
+            print(
+                f"[qplayer_config] Invalid dmxAddress '{value}'"
+                f"{' for cue ' + cue_id if cue_id else ''}. Channel must be 1..510 for RGB (+ optional A on channel 4)."
+            )
+            return None
+        return channel
 
     match = DMX_ADDRESS_PATTERN.match(text)
     if not match:
         print(
             f"[qplayer_config] Invalid dmxAddress '{value}'"
-            f"{' for cue ' + cue_id if cue_id else ''}. Expected 'Universe-Channel'."
+            f"{' for cue ' + cue_id if cue_id else ''}. Expected a channel number or legacy 'Universe-Channel'."
         )
         return None
 
-    universe = int(match.group(1))
     channel = int(match.group(2))
-
-    if universe < 1:
-        print(
-            f"[qplayer_config] Invalid dmxAddress '{value}'"
-            f"{' for cue ' + cue_id if cue_id else ''}. Universe must be >= 1."
-        )
-        return None
 
     if channel < 1 or channel > 510:
         print(
             f"[qplayer_config] Invalid dmxAddress '{value}'"
-            f"{' for cue ' + cue_id if cue_id else ''}. Channel must be 1..510 for RGB."
+            f"{' for cue ' + cue_id if cue_id else ''}. Channel must be 1..510 for RGB (+ optional A on channel 4)."
         )
         return None
 
-    return f"{universe}-{channel}"
+    return channel
 
 
 def parse_cue(data: Dict[str, Any]) -> CueUnion:

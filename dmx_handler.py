@@ -15,6 +15,11 @@ DMX_EVENT = pygame.USEREVENT + 1
 class DMXHandler:
     def __init__(self, config, local_ip="auto"):
         self.dmx_state = {}
+        self.rdm_debug = os.environ.get("PYPLAY_RDM_DEBUG", "0") in (
+            "1",
+            "true",
+            "True",
+        )
 
         if local_ip == "auto":
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -45,6 +50,12 @@ class DMXHandler:
 
         self.client.set_config(CONFIG, self.DEVICE_INFO)
         self.config = CONFIG
+
+        if self.rdm_debug:
+            print(
+                "[RDM] Debug logging enabled "
+                "(PYPLAY_RDM_DEBUG=1, optional PYPLAY_RDM_DEBUG_MAX_BYTES=64)"
+            )
 
     def dmx_receive(self, op_code, ip, port, reply):
         if not self.DEVICE_INFO:

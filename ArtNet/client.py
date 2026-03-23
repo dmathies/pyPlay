@@ -1,8 +1,9 @@
 import struct
+import os
 from typing import Callable, Any, Optional, List, Dict
 
 from ArtNet import ArtNet
-from ArtNet.rdm import parse_rdm, RdmCommandClass, pack_rdm
+from ArtNet.rdm import parse_rdm, RdmCommandClass, pack_rdm, pack_dub_response
 from .helper import (
     OpCode,
     unpack_data,
@@ -59,12 +60,38 @@ class ArtNetClient:
         self.RDM_PARAMETER_DATATYPES = ["", "B", "s", "B", "B", ">H", ">H", ">I", ">I"]
 
         self.RDM_PARAMETER_SETTERS: dict[RdmParameterID, Callable] = {}
+        self.rdm_muted_uids: set[int] = set()
+        self.rdm_debug = os.environ.get("PYPLAY_RDM_DEBUG", "0") in (
+            "1",
+            "true",
+            "True",
+        )
+        self.rdm_debug_max_bytes = max(
+            8, int(os.environ.get("PYPLAY_RDM_DEBUG_MAX_BYTES", "64"))
+        )
 
         self.artnet: ArtNet = ArtNet(ip)
 
         # Register ArtAddress handler so that configuration can be updated via ArtAddress packets.
         self.artnet.subscribe(OpCode.ArtAddress, self.handle_art_address)
         self.artnet.subscribe(OpCode.ArtPoll, self.handle_poll_request)
+
+    def _rdm_log(self, message: str) -> None:
+        if self.rdm_debug:
+            print(f"[RDM] {message}")
+
+    @staticmethod
+    def _fmt_uid(uid: int) -> str:
+        return f"{(uid >> 32) & 0xFFFF:04x}:{uid & 0xFFFFFFFF:08x}"
+
+    def _hex_preview(self, data: bytes) -> str:
+        if not data:
+            return ""
+        max_len = self.rdm_debug_max_bytes
+        preview = data[:max_len].hex(" ")
+        if len(data) > max_len:
+            return f"{preview} ... (+{len(data) - max_len} bytes)"
+        return preview
 
     def __del__(self) -> None:
         self.artnet.__del__()
@@ -87,17 +114,26 @@ class ArtNetClient:
     def handle_poll_request(
         self, op_code: OpCode, ip: str, port: int, reply: dict[str, Any]
     ) -> None:
+        self._rdm_log(
+            f"ArtPoll from {ip}:{port} -> replying net={self.config.get('net', 0)} "
+            f"sub={self.config.get('sub', 0)} uni={self.config.get('universe', 0)}"
+        )
         self.artnet.send_poll_reply(ip, port, self.config)
 
     def handle_tod_request(
         self, op_code: OpCode, ip: str, port: int, reply: dict[str, Any]
     ) -> None:
-        print(f"Received {op_code.name} from {ip}:{port}")
+        self._rdm_log(f"{op_code.name} from {ip}:{port}")
         uids: list[int] = []
         for dev in self.DEVICE_INFO:
             device_id = dev.get("id", -1)
             # Pack it as a 48-bit big-endian value
             uids.append(device_id)
+
+        self._rdm_log(
+            "TOD response UIDs="
+            + ", ".join(self._fmt_uid(uid) for uid in uids if isinstance(uid, int) and uid >= 0)
+        )
 
         self.artnet.send_tod_data(ip, port, self.config, uids)
 
@@ -106,6 +142,25 @@ class ArtNetClient:
             if device["id"] == device_id:
                 return device
         return None  # Return None if no matching device is found
+
+    def _device_exists(self, uid: int) -> bool:
+        return any(dev.get("id") == uid for dev in self.DEVICE_INFO)
+
+    def _discovery_uid_in_range(self, uid: int, lower_uid: int, upper_uid: int) -> bool:
+        return lower_uid <= uid <= upper_uid
+
+    def _discovery_candidates(self, lower_uid: int, upper_uid: int) -> list[int]:
+        uids: list[int] = []
+        for dev in self.DEVICE_INFO:
+            uid = int(dev.get("id", -1))
+            if uid < 0:
+                continue
+            if uid in self.rdm_muted_uids:
+                continue
+            if self._discovery_uid_in_range(uid, lower_uid, upper_uid):
+                uids.append(uid)
+        uids.sort()
+        return uids
 
     def RdmGetDeviceInfo(self, uid, data: bytes = b"") -> bytes:
         device = self.get_device_by_id(uid)
@@ -358,11 +413,16 @@ class ArtNetClient:
     def handle_rdm_request(
         self, op_code: OpCode, ip: str, port: int, packet: bytes
     ) -> None:
-        # print(f"Received {op_code.name} (request) from {ip}:{port}")
+        self._rdm_log(
+            f"{op_code.name} request from {ip}:{port}, bytes={len(packet)}"
+        )
+        if self.rdm_debug:
+            self._rdm_log(f"Raw packet: {self._hex_preview(packet)}")
 
         request = parse_rdm(bytes(packet))
 
         if request is None:
+            self._rdm_log("Ignored RDM packet: parse_rdm returned None")
             return
 
         # for k, v in request.items():
@@ -371,10 +431,91 @@ class ArtNetClient:
         command = request["RdmCommand"]
         parameter_id: RdmParameterID = request["RdmParameterId"]
 
+        self._rdm_log(
+            "Parsed "
+            f"cmd={command.name} "
+            f"pid={parameter_id.name if hasattr(parameter_id, 'name') else parameter_id} "
+            f"src={self._fmt_uid(request['RdmSourceUID'])} "
+            f"dst={self._fmt_uid(request['RdmDestUID'])} "
+            f"tn={request['RdmTransactioNumber']} pdl={request['RdmParameterDataLength']}"
+        )
+        if self.rdm_debug and request["RdmParameterData"]:
+            self._rdm_log(
+                f"ParamData: {self._hex_preview(request['RdmParameterData'])}"
+            )
+
         # print(f"\tRdmCommand= {request.get('RdmCommand').name}")
         # print(f"\tRdmParameterID= {request.get('RdmParameterId').name}")
 
         reply = None
+
+        if command == RdmCommandClass.RdmDiscoveryCommand:
+            target_uid = request["RdmDestUID"]
+
+            if parameter_id == RdmParameterID.RdmParamDiscUniqueBranch:
+                pdata = request["RdmParameterData"] or b""
+                if len(pdata) < 12:
+                    self._rdm_log(
+                        f"DISC_UNIQUE_BRANCH ignored: short param data ({len(pdata)} bytes)"
+                    )
+                    return
+
+                lower_uid = int.from_bytes(pdata[0:6], byteorder="big")
+                upper_uid = int.from_bytes(pdata[6:12], byteorder="big")
+                candidates = self._discovery_candidates(lower_uid, upper_uid)
+                self._rdm_log(
+                    "DISC_UNIQUE_BRANCH "
+                    f"range={self._fmt_uid(lower_uid)}..{self._fmt_uid(upper_uid)} "
+                    f"candidates={len(candidates)} muted={len(self.rdm_muted_uids)}"
+                )
+                if not candidates:
+                    self._rdm_log("DISC_UNIQUE_BRANCH: no matching responders")
+                    return
+
+                # Return one candidate per request. A controller can then mute it
+                # and continue branching to discover remaining devices.
+                self._rdm_log(
+                    f"DISC_UNIQUE_BRANCH: replying with {self._fmt_uid(candidates[0])}"
+                )
+                self.artnet.send_rdm(ip, port, self.config, pack_dub_response(candidates[0]))
+                return
+
+            if parameter_id == RdmParameterID.RdmParamDiscMute:
+                if self._device_exists(target_uid):
+                    self.rdm_muted_uids.add(target_uid)
+                    self._rdm_log(
+                        f"DISC_MUTE: muted {self._fmt_uid(target_uid)}; muted_count={len(self.rdm_muted_uids)}"
+                    )
+                    reply = b"\x00\x00"
+                else:
+                    self._rdm_log(
+                        f"DISC_MUTE ignored: unknown UID {self._fmt_uid(target_uid)}"
+                    )
+                    return
+
+            elif parameter_id == RdmParameterID.RdmParamDiscUnMute:
+                broadcast_uid = 0xFFFFFFFFFFFF
+                if target_uid == broadcast_uid:
+                    self.rdm_muted_uids.clear()
+                    self._rdm_log("DISC_UN_MUTE broadcast: cleared mute list")
+                    return
+                if self._device_exists(target_uid):
+                    self.rdm_muted_uids.discard(target_uid)
+                    self._rdm_log(
+                        f"DISC_UN_MUTE: unmuted {self._fmt_uid(target_uid)}; muted_count={len(self.rdm_muted_uids)}"
+                    )
+                    reply = b"\x00\x00"
+                else:
+                    self._rdm_log(
+                        f"DISC_UN_MUTE ignored: unknown UID {self._fmt_uid(target_uid)}"
+                    )
+                    return
+
+            else:
+                self._rdm_log(
+                    f"Discovery command ignored: unsupported PID {parameter_id}"
+                )
+                return
 
         if command == RdmCommandClass.RdmGetCommand:
             getter = self.RDM_PARAMETER_GETTERS.get(parameter_id)
@@ -386,6 +527,10 @@ class ArtNetClient:
                     request["RdmParameterId"],
                     request["RdmParameterData"],
                 )
+            self._rdm_log(
+                f"GET {parameter_id.name if hasattr(parameter_id, 'name') else parameter_id}: "
+                f"reply_len={0 if reply is None else len(reply)}"
+            )
 
         if command == RdmCommandClass.RdmSetCommand:
             setter = self.RDM_PARAMETER_SETTERS.get(parameter_id)
@@ -401,6 +546,10 @@ class ArtNetClient:
                     request["RdmParameterId"],
                     request["RdmParameterData"],
                 )
+            self._rdm_log(
+                f"SET {parameter_id.name if hasattr(parameter_id, 'name') else parameter_id}: "
+                f"reply_len={0 if reply is None else len(reply)}"
+            )
 
         if reply is not None:
             response = request
@@ -409,16 +558,29 @@ class ArtNetClient:
             response["RdmDestUID"] = response["RdmSourceUID"]
             response["RdmSourceUID"] = RdmSourceUID
 
-            response["RdmTransactioNumber"] = (
-                response["RdmTransactioNumber"] + 1
-            ) & 0xFF
+            # Keep the transaction number from the request in the response.
+            # Incrementing here can cause controllers to reject the reply.
+            response["RdmTransactioNumber"] = response["RdmTransactioNumber"] & 0xFF
             if command == RdmCommandClass.RdmGetCommand:
                 response["RdmCommand"] = RdmCommandClass.RdmGetCommandResponse
+            elif command == RdmCommandClass.RdmDiscoveryCommand:
+                response["RdmCommand"] = RdmCommandClass.RdmDiscoveryCommandResponse
             else:
                 response["RdmCommand"] = RdmCommandClass.RdmSetCommandResponse
 
             response["RdmParameterDataLength"] = len(reply)
             response["RdmParameterData"] = reply
+
+            self._rdm_log(
+                "Sending RDM response "
+                f"cmd={response['RdmCommand'].name if hasattr(response['RdmCommand'], 'name') else response['RdmCommand']} "
+                f"pid={parameter_id.name if hasattr(parameter_id, 'name') else parameter_id} "
+                f"src={self._fmt_uid(response['RdmSourceUID'])} "
+                f"dst={self._fmt_uid(response['RdmDestUID'])} "
+                f"tn={response['RdmTransactioNumber']} pdl={len(reply)}"
+            )
+            if self.rdm_debug and reply:
+                self._rdm_log(f"Response ParamData: {self._hex_preview(reply)}")
 
             self.artnet.send_rdm(ip, port, self.config, pack_rdm(response))
 

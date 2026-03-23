@@ -152,6 +152,15 @@ def parse_rdm(data: bytes) -> ArtNetFieldDict:
     if len(data) < 24:
         return None
 
+    if len(data) < 47:
+        return None
+
+    parameter_data_len = data[46]
+    parameter_data_start = 47
+    parameter_data_end = parameter_data_start + parameter_data_len
+    if len(data) < parameter_data_end:
+        return None
+
     reply = dict(
         ProtVer=struct.unpack("<H", data[10:12])[0],
         RdmVer=data[12],
@@ -168,11 +177,11 @@ def parse_rdm(data: bytes) -> ArtNetFieldDict:
         RdmTransactioNumber=data[38],
         RdmPort=data[39],
         RdmMessageCount=data[40],
-        RdmSubDevice=struct.unpack("<H", data[41:43])[0],
+        RdmSubDevice=struct.unpack(">H", data[41:43])[0],
         RdmCommand=RdmCommandClass(data[43]),
         RdmParameterId=RdmParameterID(struct.unpack(">H", data[44:46])[0]),
-        RdmParameterDataLength=data[46],
-        RdmParameterData=data[47:],
+        RdmParameterDataLength=parameter_data_len,
+        RdmParameterData=data[parameter_data_start:parameter_data_end],
     )
 
     return reply
@@ -192,7 +201,7 @@ def pack_rdm(unpacket: ArtNetFieldDict) -> bytes:
             )
             + int.to_bytes(unpacket["RdmSourceUID"], length=6, byteorder="big")
         )
-        + struct.pack("B", (unpacket["RdmTransactioNumber"] + 1) & 0xFF)
+        + struct.pack("B", unpacket["RdmTransactioNumber"] & 0xFF)
         + b"\x00"  # RESPONSE_TYPE_ACK
         + b"\x00"  # Message Count
         + b"\x00" * 2  # Sub-Device
@@ -201,5 +210,23 @@ def pack_rdm(unpacket: ArtNetFieldDict) -> bytes:
         + struct.pack("B", unpacket["RdmParameterDataLength"])
         + unpacket["RdmParameterData"]  # Append parameter data
     )
+    checksum = sum(packet) & 0xFFFF
+    return packet + struct.pack(">H", checksum)
 
-    return packet
+
+def pack_dub_response(uid: int) -> bytes:
+    """Pack a DISC_UNIQUE_BRANCH response payload (raw RDM discovery response)."""
+    uid_bytes = int(uid).to_bytes(6, byteorder="big")
+
+    encoded = bytearray()
+    for b in uid_bytes:
+        encoded.append(b | 0xAA)
+        encoded.append(b | 0x55)
+
+    checksum = sum(encoded) & 0xFFFF
+    cs_hi = (checksum >> 8) & 0xFF
+    cs_lo = checksum & 0xFF
+    encoded.extend([cs_hi | 0xAA, cs_hi | 0x55, cs_lo | 0xAA, cs_lo | 0x55])
+
+    # Discovery response preamble + separator.
+    return (b"\xFE" * 7) + b"\xAA" + bytes(encoded)

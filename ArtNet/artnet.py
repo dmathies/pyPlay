@@ -217,10 +217,14 @@ class ArtNet:
         self.tx_sock.sendto(
             pack_poll_reply(
                 ip=local_ip,
-                style=0x02,
+                # Present as a DMX node so controllers attempt TOD/RDM discovery.
+                style=0x00,
                 net_switch=config.get("net", 0),
                 sub_switch=config.get("sub", 0),
                 sw_out=[config.get("universe", 0), 0, 0, 0],
+                port_types=[0x80, 0x00, 0x00, 0x00],
+                good_output=[0x08, 0x00, 0x00, 0x00],
+                status2=0x00,
                 short_name=config.get("port_name", ""),
                 long_name=config.get("long_name", ""),
             ),
@@ -251,11 +255,5 @@ class ArtNet:
             )  # Address
             + rdm_payload
         )
-        checksum = (
-            sum(packet[11:]) + 0xBC
-        ) & 0xFFFF  # Sum all bytes and ensure 16-bit value
-        packet_with_checksum = packet + struct.pack(
-            ">H", checksum
-        )  # Append as big-endian 16-bit integer
 
-        self.tx_sock.sendto(packet_with_checksum, (ip, port))
+        self.tx_sock.sendto(packet, (ip, port))

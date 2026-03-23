@@ -18,6 +18,11 @@ uniform float brightness;
 uniform vec2 scale;
 uniform vec2 offset;
 uniform vec3 dmxColor;
+uniform int video1Linear;  // 1 = already linear (EXR/HDR), 0 = sRGB gamma-encoded
+
+vec3 sRGBToLinear(vec3 c) {
+    return pow(max(c, vec3(0.0)), vec3(2.2));
+}
 
 vec4 NV12ToRGBA(float y, vec2 uv) {
     float Y = y;
@@ -44,21 +49,24 @@ vec4 YUV420pToRGBA(float y, float u, float v) {
 }
 
 vec4 getVideo1Sample(vec2 finalTexCoord) {
+    vec4 s;
     if (video1Format == 0) {
-        return texture(video1RGB, finalTexCoord);
+        s = texture(video1RGB, finalTexCoord);
     } else if (video1Format == 1) {
         float y = texture(video1Y, finalTexCoord).r;
         vec2 uv = texture(video1UV, finalTexCoord).rg;
-        return NV12ToRGBA(y, uv);
+        s = NV12ToRGBA(y, uv);
     } else if (video1Format == 2) {
         float y = texture(video1Y, finalTexCoord).r;
         float u = texture(video1U, finalTexCoord).r;
         float v = texture(video1V, finalTexCoord).r;
-        return YUV420pToRGBA(y, u, v);
+        s = YUV420pToRGBA(y, u, v);
+    } else {
+        float y = texture(video1Y, finalTexCoord).r;
+        s = vec4(y, y, y, 1.0);
     }
-
-    float y = texture(video1Y, finalTexCoord).r;
-    return vec4(y, y, y, 1.0);
+    if (video1Linear == 0) s.rgb = sRGBToLinear(s.rgb);
+    return s;
 }
 
 void main() {

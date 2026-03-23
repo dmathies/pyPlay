@@ -101,7 +101,7 @@ class Renderer:
             "whitePoint": 1.0,
             "bloomStrength": 0.25,
             "bloomThreshold": 1.0,
-            "sceneGammaIn": 2.2,
+            "sceneGammaIn": 1.0,
         }
         self.bloom_fbo = 0
         self.bloom_tex = 0
@@ -299,6 +299,15 @@ class Renderer:
             alpha = active_cue.alpha
             if getattr(active_cue.cue, "fadeType", FadeType.Linear) == FadeType.SCurve:
                 alpha = self.smooth_step(active_cue.alpha)
+            alpha = max(
+                0.0,
+                min(
+                    1.0,
+                    alpha
+                    * getattr(active_cue, "layer_alpha", 1.0)
+                    * getattr(active_cue, "dmx_layer_alpha", 1.0),
+                ),
+            )
 
             if isinstance(active_cue.cue, VideoCue):
                 if active_cue.video_data.status == VideoStatus.LOADED:
@@ -342,7 +351,7 @@ class Renderer:
                         if scene_shader_name == "scene_light_additive_holdout":
                             self.draw_additive_holdout_to_scene(
                                 active_cue.video_data,
-                                active_cue.alpha,
+                                alpha,
                                 active_cue.shader_parameters,
                             )
                         else:
@@ -355,7 +364,7 @@ class Renderer:
                             })
                             self.draw_texture_to_scene(
                                 active_cue.video_data,
-                                active_cue.alpha,
+                                alpha,
                                 shader_parameters=active_cue.shader_parameters,
                             )
                         cue_elapsed = time.perf_counter() - cue_start
@@ -374,7 +383,7 @@ class Renderer:
                         if scene_shader_name == "scene_light_additive_holdout":
                             self.draw_additive_holdout_to_scene(
                                 active_cue.video_data,
-                                active_cue.alpha,
+                                alpha,
                                 active_cue.shader_parameters,
                             )
                         else:
@@ -387,7 +396,7 @@ class Renderer:
                             })
                             self.draw_texture_to_scene(
                                 active_cue.video_data,
-                                active_cue.alpha,
+                                alpha,
                                 active_cue.alpha_video_data,
                                 active_cue.cue.alphaMode,
                                 active_cue.cue.alphaSoftness,
@@ -653,7 +662,7 @@ class Renderer:
 
         self.maybe_profile_sync()
         self.bind_texture(alpha, self.dimmer, video)
-        self.set_parameters({"video1Format": video.frame_pix_format})
+        self.set_parameters({"video1Format": video.frame_pix_format, "video1Linear": int(video.hdr_still)})
 
         if alpha_video:
             if alpha_video.status == VideoStatus.READY:
@@ -665,13 +674,15 @@ class Renderer:
                         "video2Format": alpha_video.frame_pix_format,
                         "video2ColourSpace": alpha_video.colour_space,
                         "video1Format": video.frame_pix_format,
-                        "video1ColourSpace": video.colour_space
+                        "video1ColourSpace": video.colour_space,
+                        "video1Linear": int(video.hdr_still),
                     }
                 )
         else:
             self.set_parameters({"alphaMode": 0,
                                  "video1Format": video.frame_pix_format,
-                                 "video1ColourSpace": video.colour_space})
+                                 "video1ColourSpace": video.colour_space,
+                                 "video1Linear": int(video.hdr_still)})
 
         glViewport(0, 0, self.scene_size[0], self.scene_size[1])
         scissor_box = self.compute_content_scissor(video, shader_parameters)

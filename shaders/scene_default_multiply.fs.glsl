@@ -30,6 +30,11 @@ uniform float brightness;
 uniform float contrast;
 uniform float gamma;
 uniform vec3 dmxColor;
+uniform int video1Linear;  // 1 = already linear (EXR/HDR), 0 = sRGB gamma-encoded
+
+vec3 sRGBToLinear(vec3 c) {
+    return pow(max(c, vec3(0.0)), vec3(2.2));
+}
 
 vec3 NV12ToRGB(float y, vec2 uv) {
     float Y = y;
@@ -54,21 +59,23 @@ vec3 YUV420pToRGB(float y, float u, float v) {
 }
 
 vec3 getVideo1Color(vec2 finalTexCoord) {
+    vec3 color;
     if (video1Format == 0) {
-        return texture(video1RGB, finalTexCoord).rgb;
+        color = texture(video1RGB, finalTexCoord).rgb;
     } else if (video1Format == 1) {
         float y = texture(video1Y, finalTexCoord).r;
         vec2 uv = texture(video1UV, finalTexCoord).rg;
-        return NV12ToRGB(y, uv);
+        color = NV12ToRGB(y, uv);
     } else if (video1Format == 2) {
         float y = texture(video1Y, finalTexCoord).r;
         float u = texture(video1U, finalTexCoord).r;
         float v = texture(video1V, finalTexCoord).r;
-        return YUV420pToRGB(y, u, v);
+        color = YUV420pToRGB(y, u, v);
+    } else {
+        color = vec3(texture(video1Y, finalTexCoord).r);
     }
-
-    float y = texture(video1Y, finalTexCoord).r;
-    return vec3(y, y, y);
+    if (video1Linear == 0) color = sRGBToLinear(color);
+    return color;
 }
 
 vec3 getVideo2Color(vec2 finalTexCoord) {

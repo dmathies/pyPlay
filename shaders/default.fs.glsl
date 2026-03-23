@@ -33,6 +33,11 @@ uniform float brightness;  // Range: [-1.0, 1.0]
 uniform float contrast;    // Range: [0.0, 2.0] (1.0 = no change)
 uniform float gamma;       // Range: [0.1, 5.0] (1.0 = no change)
 uniform vec3 dmxColor;     // Per-cue DMX RGB tint
+uniform int video1Linear;  // 1 = already linear (EXR/HDR), 0 = sRGB gamma-encoded
+
+vec3 sRGBToLinear(vec3 c) {
+    return pow(max(c, vec3(0.0)), vec3(2.2));
+}
 
 vec3 NV12ToRGB(float y, vec2 uv) {
     float Y = y;
@@ -57,26 +62,25 @@ vec3 YUV420pToRGB(float y, float u, float v) {
 }
 
 vec3 getVideo1Color(vec2 finalTexCoord) {
+    vec3 color;
     if (video1Format == 0) {
-        vec3 color = texture(video1RGB, finalTexCoord).rgb;
-        return color;
+        color = texture(video1RGB, finalTexCoord).rgb;
     } else if (video1Format == 1) {
         float y = texture(video1Y, finalTexCoord).r;
         vec2 uv = texture(video1UV, finalTexCoord).rg;
-        vec3 color = NV12ToRGB(y, uv);
-        return color;
+        color = NV12ToRGB(y, uv);
     } else if (video1Format == 2) {
         float y = texture(video1Y, finalTexCoord).r;
         // Since U and V textures are half size, scale texture coordinates.
         vec2 uvCoords = finalTexCoord;
         float u = texture(video1U, uvCoords).r;
         float v = texture(video1V, uvCoords).r;
-        vec3 color = YUV420pToRGB(y, u, v);
-        return color;
+        color = YUV420pToRGB(y, u, v);
     } else {
-        float y = texture(video1Y, finalTexCoord).r;
-        return vec3(y, y, y);
+        color = vec3(texture(video1Y, finalTexCoord).r);
     }
+    if (video1Linear == 0) color = sRGBToLinear(color);
+    return color;
 }
 
 vec3 getVideo2Color(vec2 finalTexCoord) {
