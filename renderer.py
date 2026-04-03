@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+import math
 
 import av
 import numpy as np
@@ -105,9 +106,13 @@ class Renderer:
         }
         self.bloom_fbo = 0
         self.bloom_tex = 0
-        self.bloom_pingpong_fbo = [0, 0]
-        self.bloom_pingpong_tex = [0, 0]
         self.bloom_output_tex = 0
+        self.bloom_mip_count = 1
+        self.bloom_downsample_fbo: list[int] = []
+        self.bloom_downsample_tex: list[int] = []
+        self.bloom_upsample_fbo: list[int] = []
+        self.bloom_upsample_tex: list[int] = []
+        self.bloom_mip_sizes: list[tuple[int, int]] = []
         self.fps_font = None
         self.fps_texture = 0
         self.fps_texture_size = (0, 0)
@@ -119,7 +124,8 @@ class Renderer:
         self.dmx_lookup_size = (128, 1)
         self.dmx_lookup_pixels = np.full((1, 128, 4), 255, dtype=np.uint8)
         # Runtime tuning/debug knobs for lower-power targets like the Pi.
-        self.bloom_blur_passes = max(0, int(os.environ.get("PYPLAY_BLOOM_PASSES", "6")))
+        self.bloom_mip_cap = max(1, int(os.environ.get("PYPLAY_BLOOM_MIPS", "6")))
+        self.bloom_scale_divisor = max(1, int(os.environ.get("PYPLAY_BLOOM_DIV", "2")))
         self.show_fps_overlay = show_fps_overlay or (
             os.environ.get("PYPLAY_SHOW_FPS", "0") not in ("0", "false", "False")
         )
@@ -237,7 +243,8 @@ class Renderer:
         self.register_shader_program("grid_wire")
         self.register_shader_program("tonemap")
         self.register_shader_program("bloom_extract")
-        self.register_shader_program("bloom_blur")
+        self.register_shader_program("bloom_downsample")
+        self.register_shader_program("bloom_upsample")
         self.register_shader_program("overlay_text")
         self.register_shader_program("output_warp")
         self.set_shader("default")
@@ -571,7 +578,7 @@ class Renderer:
                 f"mask={mask_ms:5.2f}ms framing={framing_ms:5.2f}ms "
                 f"other={max(0.0, other_ms - texture_create_ms - post_ms - setup_ms - cue_draw_ms - mask_ms - framing_ms - warp_ms - flip_ms):6.2f}ms "
                 f"cues={len(active_cues)} video={video_cue_count} still={still_count} alpha={alpha_video_count} "
-                f"post={'on' if self.enable_postprocess else 'off'} bloom_passes={self.bloom_blur_passes} "
+                f"post={'on' if self.enable_postprocess else 'off'} bloom_mips={self.bloom_mip_count} "
                 f"warp_mesh={self.warp_mesh[0]}x{self.warp_mesh[1]} scene_scale={self.scene_scale:.2f}"
             )
             if self.profile_cues and cue_timings:
@@ -1666,14 +1673,24 @@ class Renderer:
         self.output_fbo, self.output_color_tex = self.create_scene_fbo(
             self.scene_size[0], self.scene_size[1], hdr=False
         )
-        self.bloom_w = max(1, self.scene_size[0] // 4)
-        self.bloom_h = max(1, self.scene_size[1] // 4)
+        self.bloom_w = max(1, self.scene_size[0] // self.bloom_scale_divisor)
+        self.bloom_h = max(1, self.scene_size[1] // self.bloom_scale_divisor)
+        self.bloom_mip_count = min(
+            self.bloom_mip_cap,
+            max(1, int(math.floor(math.log2(max(self.bloom_w, self.bloom_h))))) + 1,
+        )
         (
-            self.bloom_fbo,
-            self.bloom_tex,
-            self.bloom_pingpong_fbo,
-            self.bloom_pingpong_tex,
-        ) = self.create_bloom_fbos(self.bloom_w, self.bloom_h)
+            self.bloom_downsample_fbo,
+            self.bloom_downsample_tex,
+            self.bloom_upsample_fbo,
+            self.bloom_upsample_tex,
+            self.bloom_mip_sizes,
+        ) = self.create_bloom_mip_chain(
+            self.bloom_w, self.bloom_h, self.bloom_mip_count
+        )
+        self.bloom_fbo = self.bloom_downsample_fbo[0]
+        self.bloom_tex = self.bloom_downsample_tex[0]
+        self.bloom_output_tex = self.bloom_upsample_tex[0]
         self.post_VAO, self.post_VBO, self.post_EBO = self.create_postprocess_quad()
 
     @staticmethod
@@ -1775,8 +1792,8 @@ class Renderer:
         return vao, vbo, ebo
 
     @staticmethod
-    def create_bloom_fbos(width: int, height: int):
-        def make_tex():
+    def create_bloom_mip_chain(width: int, height: int, mip_count: int):
+        def make_level(level_w: int, level_h: int):
             tex = glGenTextures(1)
             glBindTexture(GL_TEXTURE_2D, tex)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
@@ -1787,37 +1804,36 @@ class Renderer:
                 GL_TEXTURE_2D,
                 0,
                 GL_RGBA16F,
-                width,
-                height,
+                level_w,
+                level_h,
                 0,
                 GL_RGBA,
                 GL_HALF_FLOAT,
                 None,
             )
-            return tex
 
-        # extract target
-        bloom_fbo = glGenFramebuffers(1)
-        bloom_tex = make_tex()
-        glBindFramebuffer(GL_FRAMEBUFFER, bloom_fbo)
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, bloom_tex, 0)
-
-        # ping-pong targets
-        pingpong_fbo = [glGenFramebuffers(1), glGenFramebuffers(1)]
-        pingpong_tex = [make_tex(), make_tex()]
-        for i in range(2):
-            glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i])
-            glFramebufferTexture2D(
-                GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_tex[i], 0
-            )
+            fbo = glGenFramebuffers(1)
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0)
+            status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
+            if status != GL_FRAMEBUFFER_COMPLETE:
+                raise RuntimeError(f"Bloom FBO incomplete: 0x{status:04X}")
+            return fbo, tex
 
         glBindTexture(GL_TEXTURE_2D, 0)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        return bloom_fbo, bloom_tex, pingpong_fbo, pingpong_tex
+        sizes = [(max(1, width >> level), max(1, height >> level)) for level in range(mip_count)]
+        downsample = [make_level(level_w, level_h) for level_w, level_h in sizes]
+        upsample = [make_level(level_w, level_h) for level_w, level_h in sizes]
+        downsample_fbo = [fbo for fbo, _ in downsample]
+        downsample_tex = [tex for _, tex in downsample]
+        upsample_fbo = [fbo for fbo, _ in upsample]
+        upsample_tex = [tex for _, tex in upsample]
+        return downsample_fbo, downsample_tex, upsample_fbo, upsample_tex, sizes
 
     def draw_bloom_pass(self):
         glDisable(GL_BLEND)
-        glViewport(0, 0, self.bloom_w, self.bloom_h)
+        glBindVertexArray(self.post_VAO)
 
         # Bright extract
         self.set_shader("bloom_extract")
@@ -1828,34 +1844,71 @@ class Renderer:
                 "sceneGammaIn": self.post_parameters["sceneGammaIn"],
             }
         )
-        glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_fbo)
+        glViewport(0, 0, self.bloom_w, self.bloom_h)
+        glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_downsample_fbo[0])
         glClearColor(0.0, 0.0, 0.0, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.scene_color_tex)
-        glBindVertexArray(self.post_VAO)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
 
-        # Blur ping-pong
-        self.set_shader("bloom_blur")
-        self.set_parameters({"image": 0, "texelSize": (1.0 / self.bloom_w, 1.0 / self.bloom_h)})
-        horizontal = True
-        first = True
-        last_tex = self.bloom_tex
-        for _ in range(self.bloom_blur_passes):
-            target = 0 if horizontal else 1
-            glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_pingpong_fbo[target])
-            self.set_parameters({"horizontal": 1 if horizontal else 0})
+        self.set_shader("bloom_downsample")
+        self.set_parameters({"sourceTex": 0})
+        for level in range(1, self.bloom_mip_count):
+            src_w, src_h = self.bloom_mip_sizes[level - 1]
+            dst_w, dst_h = self.bloom_mip_sizes[level]
+            glViewport(0, 0, dst_w, dst_h)
+            glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_downsample_fbo[level])
+            glClear(GL_COLOR_BUFFER_BIT)
             glActiveTexture(GL_TEXTURE0)
-            glBindTexture(GL_TEXTURE_2D, self.bloom_tex if first else last_tex)
+            glBindTexture(GL_TEXTURE_2D, self.bloom_downsample_tex[level - 1])
+            self.set_parameters({"sourceTexelSize": (1.0 / src_w, 1.0 / src_h)})
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
-            last_tex = self.bloom_pingpong_tex[target]
-            horizontal = not horizontal
-            first = False
 
-        self.bloom_output_tex = last_tex
+        self.set_shader("bloom_upsample")
+        self.set_parameters({"baseTex": 0, "lowTex": 1})
+        smallest = self.bloom_mip_count - 1
+        glViewport(0, 0, *self.bloom_mip_sizes[smallest])
+        glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_upsample_fbo[smallest])
+        glClear(GL_COLOR_BUFFER_BIT)
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, self.bloom_downsample_tex[smallest])
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, self.bloom_downsample_tex[smallest])
+        self.set_parameters(
+            {
+                "baseTexelSize": (1.0 / self.bloom_mip_sizes[smallest][0], 1.0 / self.bloom_mip_sizes[smallest][1]),
+                "lowTexelSize": (1.0 / self.bloom_mip_sizes[smallest][0], 1.0 / self.bloom_mip_sizes[smallest][1]),
+                "baseWeight": 0.0,
+            }
+        )
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
+
+        for level in range(self.bloom_mip_count - 2, -1, -1):
+            level_w, level_h = self.bloom_mip_sizes[level]
+            low_w, low_h = self.bloom_mip_sizes[level + 1]
+            glViewport(0, 0, level_w, level_h)
+            glBindFramebuffer(GL_FRAMEBUFFER, self.bloom_upsample_fbo[level])
+            glClear(GL_COLOR_BUFFER_BIT)
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.bloom_downsample_tex[level])
+            glActiveTexture(GL_TEXTURE1)
+            glBindTexture(GL_TEXTURE_2D, self.bloom_upsample_tex[level + 1])
+            self.set_parameters(
+                {
+                    "baseTexelSize": (1.0 / level_w, 1.0 / level_h),
+                    "lowTexelSize": (1.0 / low_w, 1.0 / low_h),
+                    "baseWeight": 1.0,
+                }
+            )
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
+
+        self.bloom_output_tex = self.bloom_upsample_tex[0]
         glBindVertexArray(0)
         glBindTexture(GL_TEXTURE_2D, 0)
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glActiveTexture(GL_TEXTURE0)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
     def draw_tonemap_pass(self):

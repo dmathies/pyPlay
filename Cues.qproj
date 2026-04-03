@@ -435,28 +435,12 @@
       "target": 0,
       "shaderParameters": [
         {
-          "name": "exposure",
-          "value": 1
-        },
-        {
-          "name": "gammaOut",
+          "name": "bloomThreshold",
           "value": 2
         },
         {
-          "name": "whitePoint",
-          "value": 1
-        },
-        {
           "name": "bloomStrength",
-          "value": 0
-        },
-        {
-          "name": "bloomThreshold",
-          "value": 1.1
-        },
-        {
-          "name": "sceneGammaIn",
-          "value": 1
+          "value": 0.07
         }
       ],
       "fadeTime": 1,

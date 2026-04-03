@@ -25,7 +25,7 @@ void main() {
     // Keep scene and bloom in the same texture-space orientation before the final
     // output warp stage applies its own vertical convention.
     vec2 scene_uv = vec2(vTexCoords.x, 1.0 - vTexCoords.y);
-    vec2 bloom_uv = scene_uv;
+    vec2 bloom_uv = vTexCoords;
     vec3 hdr = texture(hdrScene, scene_uv).rgb;
     vec3 bloom = texture(bloomTex, bloom_uv).rgb * bloomStrength;
     vec3 scene = pow(max(hdr + bloom, vec3(0.0)), vec3(max(sceneGammaIn, 1e-4)));

@@ -442,9 +442,7 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
     return DummyCue(**base)
 
 
-def load_qproj(path: str) -> QProjConfig:
-    with open(path, "r") as f:
-        data = json.load(f)
+def parse_qproj_data(data: dict[str, Any]) -> QProjConfig:
     cues = [parse_cue(c) for c in data["cues"]]
     show_metadata = ShowMetadata(**data["showSettings"])
     return QProjConfig(
@@ -453,3 +451,13 @@ def load_qproj(path: str) -> QProjConfig:
         columnWidths=data.get("columnWidths", []),
         cues=cues,
     )
+
+
+def load_qproj_from_bytes(payload: bytes) -> QProjConfig:
+    return parse_qproj_data(json.loads(payload.decode("utf-8")))
+
+
+def load_qproj(path: str) -> QProjConfig:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return parse_qproj_data(data)

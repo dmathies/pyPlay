@@ -147,10 +147,53 @@ class CueEngine:
                     except Exception as ex:
                         print(f"Error while loading custom shader: {ex}")
 
+        self.refresh_active_cues_from_definitions()
+
         # Stop all cues that no longer exist
         for acue in self.active_cues:
             if acue.qid not in self.cues:
                 acue.complete = True
+
+        self.active_cues.sort(
+            key=lambda obj: (obj.z_index, getattr(obj, "cue_order", 0))
+        )
+
+    def refresh_active_cues_from_definitions(self):
+        for active_cue in self.active_cues:
+            cue = self.cues.get(active_cue.qid)
+            if not cue:
+                continue
+
+            active_cue.cue = cue
+            active_cue.cue_order = self.qid_order.get(active_cue.qid, active_cue.cue_order)
+            active_cue.media_loopMode = cue.loopMode
+            active_cue.media_loopCount = cue.loopCount
+
+            if isinstance(cue, VideoCue):
+                active_cue.z_index = cue.zIndex
+                if cue.startTime is not None:
+                    active_cue.media_startTime = cue.startTime
+                if cue.duration is not None:
+                    active_cue.media_duration = cue.duration
+                if cue.volume is not None:
+                    active_cue.media_volume = cue.volume
+                if cue.fadeIn is not None:
+                    active_cue.media_fadeIn = cue.fadeIn
+                if cue.fadeOut is not None:
+                    active_cue.media_fadeOut = cue.fadeOut
+                if cue.fadeType is not None:
+                    active_cue.media_fadeType = cue.fadeType
+                active_cue.media_stompsOthers = cue.stompsOthers
+                active_cue.shader_parameters = self.shader_params_to_dict(cue.shaderParameters)
+                self.apply_initial_video_shader_parameters(active_cue, cue)
+            elif isinstance(cue, ShaderParams):
+                active_cue.media_fadeIn = cue.fadeIn
+                active_cue.media_fadeType = cue.fadeType
+                active_cue.shader_parameters = self.shader_params_to_dict(cue.shaderParameters)
+                active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+            elif isinstance(cue, VideoFraming):
+                active_cue.media_fadeIn = cue.fadeIn
+                active_cue.media_fadeType = cue.fadeType
 
     def register_callback(self, callback, args):
         self.callback = callback
@@ -278,15 +321,41 @@ class CueEngine:
                     )
                     self.apply_initial_video_shader_parameters(match, cue)
                 elif isinstance(cue, VideoFraming):
+                    match.cue_start_time = time.time()
+                    match.alpha = 0.0
+                    match.complete = False
+                    match.endLoop = False
+                    match.paused = paused
+                    match.pause_time = match.cue_start_time
                     match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
                 elif isinstance(cue, ShaderParams):
+                    match.cue_start_time = time.time()
+                    match.alpha = 0.0
+                    match.complete = False
+                    match.endLoop = False
+                    match.paused = paused
+                    match.pause_time = match.cue_start_time
                     match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
                     match.shader_parameters = self.shader_params_to_dict(
                         cue.shaderParameters
                     )
-                    match.shader_parameters_original = match.shader_parameters.copy()
+                    if cue.videoQid == "post":
+                        old = self.renderer.get_post_parameters()
+                        match.shader_parameters_original = {
+                            key: old.get(key, value)
+                            for key, value in match.shader_parameters.items()
+                        }
+                    else:
+                        target = next(
+                            (q for q in self.active_cues if q.qid == cue.videoQid),
+                            None,
+                        )
+                        if target and target.shader_parameters:
+                            match.shader_parameters_original = target.shader_parameters.copy()
+                        else:
+                            match.shader_parameters_original = match.shader_parameters.copy()
 
                 match.loop_counter = 0
                 match.state_reported = 0

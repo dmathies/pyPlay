@@ -16,7 +16,7 @@ from dmx_handler import DMXHandler, DMX_EVENT
 from http_handler import start_http_handler
 from osc_handler import OSCHandler, OSC_MESSAGE
 # from renderer import Renderer
-from qplayer_config import load_qproj, Point, FramingShutter
+from qplayer_config import load_qproj, load_qproj_from_bytes, Point, FramingShutter
 from utils import call_method_by_name
 from video_handler import VideoHandler, VideoData
 from websocket_handler import WS_EVENT, WebSocketHandler
@@ -399,19 +399,36 @@ def main():
                     if event.data["command"] == "update-show":
                         try:
                             cue_data = event.data["args"]
+                            if isinstance(cue_data, str):
+                                cue_data = cue_data.encode("utf-8")
+
+                            qplayer_config = load_qproj_from_bytes(cue_data)
+                            applied_from_memory_only = False
+
                             if os.path.exists(cue_file):
                                 backup_path = cue_file + ".bak"
-                                shutil.copy2(cue_file, backup_path)
-                                print(f"Backup created at {backup_path}")
+                                try:
+                                    shutil.copy2(cue_file, backup_path)
+                                    print(f"Backup created at {backup_path}")
+                                except Exception as e:
+                                    applied_from_memory_only = True
+                                    print(f"Error creating backup for cue file {e}")
 
-                            with open(cue_file, "wb") as f:
-                                f.write(cue_data)
-                                print(
-                                    f"Successfully wrote {len(cue_data)} bytes to {cue_file}"
-                                )
+                            try:
+                                with open(cue_file, "wb") as f:
+                                    f.write(cue_data)
+                                    print(
+                                        f"Successfully wrote {len(cue_data)} bytes to {cue_file}"
+                                    )
+                            except Exception as e:
+                                applied_from_memory_only = True
+                                print(f"Error writing to cue file {e}")
 
-                            qplayer_config = load_qproj(cue_file)
                             cue_engine.set_cues(qplayer_config.cues)
+                            if applied_from_memory_only:
+                                print("Applied update-show from in-memory payload only; disk file was not updated.")
+                            else:
+                                print("Applied update-show from disk and in-memory payload.")
 
                         except Exception as e:
                             print(f"Error during processing cue_file {e}")
