@@ -170,6 +170,11 @@ class CueEngine:
 
         self.dmx_state[universe] = values
         self.active_dmx_universe = universe
+        if self.renderer is not None:
+            try:
+                self.renderer.update_dmx_lookup(values)
+            except Exception:
+                pass
 
     def apply_initial_video_shader_parameters(self, active_cue: ActiveCue, cue: VideoCue):
         if active_cue.shader_parameters is None:

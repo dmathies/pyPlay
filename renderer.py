@@ -115,6 +115,9 @@ class Renderer:
         self.last_fps_value = 0.0
         self.bloom_w = 0
         self.bloom_h = 0
+        self.dmx_lookup_texture = 0
+        self.dmx_lookup_size = (128, 1)
+        self.dmx_lookup_pixels = np.full((1, 128, 4), 255, dtype=np.uint8)
         # Runtime tuning/debug knobs for lower-power targets like the Pi.
         self.bloom_blur_passes = max(0, int(os.environ.get("PYPLAY_BLOOM_PASSES", "6")))
         self.show_fps_overlay = show_fps_overlay or (
@@ -219,9 +222,13 @@ class Renderer:
 
         self.register_shader_program("default")
         self.register_shader_program("default_additive")
+        self.register_shader_program("default_additive_dmx_group")
+        self.register_shader_program("default_additive_dmx_group_debug")
         self.register_shader_program("default_multiply")
         self.register_shader_program("scene_default")
         self.register_shader_program("scene_default_additive")
+        self.register_shader_program("scene_default_additive_dmx_group")
+        self.register_shader_program("scene_default_additive_dmx_group_debug")
         self.register_shader_program("scene_light_additive")
         self.register_shader_program("scene_holdout_alpha")
         self.register_shader_program("scene_light_multiply")
@@ -236,6 +243,7 @@ class Renderer:
         self.set_shader("default")
         self.VAO = self.setup_geometry(rows=self.warp_mesh[1], cols=self.warp_mesh[0])
         self.setup_postprocess_resources()
+        self.setup_dmx_lookup_texture()
         
         self.src_pts = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32)
         self.set_corners([Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)], "left")
@@ -656,6 +664,7 @@ class Renderer:
         shader_parameters: dict | None = None,
     ):
         # print(f"Draw Texture: alpha:{alpha}, alphaMode:{alphaMode},  video1Format: {video.frame_pix_format}")
+        uses_dmx_group_map = "dmx_group" in (self.current_shader or "")
 
         if video.current_frame is None:
             return
@@ -663,10 +672,12 @@ class Renderer:
         self.maybe_profile_sync()
         self.bind_texture(alpha, self.dimmer, video)
         self.set_parameters({"video1Format": video.frame_pix_format, "video1Linear": int(video.hdr_still)})
+        self.set_parameters({"dmxGroupMapEnabled": 0})
 
         if alpha_video:
             if alpha_video.status == VideoStatus.READY:
-                self.bind_texture_layer(alpha_video, 1)
+                texture_filter = GL_NEAREST if uses_dmx_group_map else GL_LINEAR
+                self.bind_texture_layer(alpha_video, 1, texture_filter=texture_filter)
                 self.set_parameters(
                     {
                         "alphaMode": AlphaMode.to_number(alphaMode),
@@ -678,11 +689,16 @@ class Renderer:
                         "video1Linear": int(video.hdr_still),
                     }
                 )
+                if uses_dmx_group_map:
+                    self.bind_dmx_lookup_texture()
+                    self.set_parameters({"dmxGroupMapEnabled": 1})
         else:
             self.set_parameters({"alphaMode": 0,
                                  "video1Format": video.frame_pix_format,
                                  "video1ColourSpace": video.colour_space,
                                  "video1Linear": int(video.hdr_still)})
+            if uses_dmx_group_map:
+                self.bind_dmx_lookup_texture()
 
         glViewport(0, 0, self.scene_size[0], self.scene_size[1])
         scissor_box = self.compute_content_scissor(video, shader_parameters)
@@ -1093,6 +1109,73 @@ class Renderer:
 
         return tex
 
+    def setup_dmx_lookup_texture(self):
+        if self.dmx_lookup_texture:
+            return
+
+        self.dmx_lookup_texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.dmx_lookup_texture)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA8,
+            self.dmx_lookup_size[0],
+            self.dmx_lookup_size[1],
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            self.dmx_lookup_pixels,
+        )
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+    def update_dmx_lookup(self, values: list[int] | tuple[int, ...] | np.ndarray):
+        if not self.dmx_lookup_texture:
+            self.setup_dmx_lookup_texture()
+
+        pixels = np.full((1, 128, 4), 255, dtype=np.uint8)
+        for group in range(128):
+            base = group * 4
+            if base >= len(values):
+                break
+            pixels[0, group, 0] = int(values[base]) & 0xFF
+            if base + 1 < len(values):
+                pixels[0, group, 1] = int(values[base + 1]) & 0xFF
+            if base + 2 < len(values):
+                pixels[0, group, 2] = int(values[base + 2]) & 0xFF
+            if base + 3 < len(values):
+                pixels[0, group, 3] = int(values[base + 3]) & 0xFF
+
+        self.dmx_lookup_pixels = pixels
+        glBindTexture(GL_TEXTURE_2D, self.dmx_lookup_texture)
+        glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            self.dmx_lookup_size[0],
+            self.dmx_lookup_size[1],
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            self.dmx_lookup_pixels,
+        )
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+    def bind_dmx_lookup_texture(self, texture_unit: int = 6):
+        if not self.dmx_lookup_texture:
+            self.setup_dmx_lookup_texture()
+
+        glActiveTexture(TEXTURE_UNIT_LOOKUP[texture_unit])
+        glBindTexture(GL_TEXTURE_2D, self.dmx_lookup_texture)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        self.set_parameters({"dmxLookup": texture_unit})
+
     # --- New Texture Creation / Update Functions ---
     @staticmethod
     def extract_float_rgb_frame(frame: av.VideoFrame) -> np.ndarray | None:
@@ -1358,7 +1441,13 @@ class Renderer:
         else:
             print(f"Unsupported video frame format: '{frame.format.name}'!")
 
-    def bind_texture_layer(self, video_data, layer, clamp=GL_CLAMP_TO_EDGE):
+    def bind_texture_layer(
+        self,
+        video_data,
+        layer,
+        clamp=GL_CLAMP_TO_EDGE,
+        texture_filter=GL_LINEAR,
+    ):
         if len(video_data.textures) == 0:
             # Something didn't work while creating textures, avoid crashing by failing silently
             return
@@ -1368,39 +1457,31 @@ class Renderer:
 
         params = {locator_base + "Format": video_data.frame_pix_format}
 
-        glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit])
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
+        def bind_unit(unit_index, texture_id):
+            glActiveTexture(TEXTURE_UNIT_LOOKUP[unit_index])
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_filter)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, texture_filter)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
 
         if video_data.frame_pix_format == VideoFrameFormat.RGB:
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
+            bind_unit(tex_unit, video_data.textures["RGB"])
             params[locator_base + "RGB"] = tex_unit
         elif video_data.frame_pix_format == VideoFrameFormat.NV12:
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["Y"])
+            bind_unit(tex_unit, video_data.textures["Y"])
             params[locator_base + "Y"] = tex_unit
-            glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit + 1])
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["UV"])
+            bind_unit(tex_unit + 1, video_data.textures["UV"])
             params[locator_base + "UV"] = tex_unit + 1
         elif video_data.frame_pix_format == VideoFrameFormat.GRAY:
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["Y"])
+            bind_unit(tex_unit, video_data.textures["Y"])
             params[locator_base + "Y"] = tex_unit
-            glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit + 1])
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
         else:  # YUVJ420p
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["Y"])
+            bind_unit(tex_unit, video_data.textures["Y"])
             params[locator_base + "Y"] = tex_unit
-            glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit + 1])
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["U"])
+            bind_unit(tex_unit + 1, video_data.textures["U"])
             params[locator_base + "U"] = tex_unit + 1
-            glActiveTexture(TEXTURE_UNIT_LOOKUP[tex_unit + 2])
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
-            glBindTexture(GL_TEXTURE_2D, video_data.textures["V"])
+            bind_unit(tex_unit + 2, video_data.textures["V"])
             params[locator_base + "V"] = tex_unit + 2
 
         self.set_parameters(params)
