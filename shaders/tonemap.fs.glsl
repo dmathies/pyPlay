@@ -10,7 +10,6 @@ uniform float exposure;
 uniform float gammaOut;
 uniform float whitePoint;
 uniform float bloomStrength;
-uniform float sceneGammaIn;
 
 vec3 aces_film(vec3 x) {
     const float a = 2.51;
@@ -28,7 +27,7 @@ void main() {
     vec2 bloom_uv = vTexCoords;
     vec3 hdr = texture(hdrScene, scene_uv).rgb;
     vec3 bloom = texture(bloomTex, bloom_uv).rgb * bloomStrength;
-    vec3 scene = pow(max(hdr + bloom, vec3(0.0)), vec3(max(sceneGammaIn, 1e-4)));
+    vec3 scene = max(hdr + bloom, vec3(0.0));
     vec3 scaled = scene * exposure / max(whitePoint, 1e-4);
     vec3 mapped = aces_film(scaled);
     vec3 out_rgb = pow(mapped, vec3(1.0 / max(gammaOut, 1e-4)));

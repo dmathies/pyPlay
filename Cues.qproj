@@ -650,6 +650,56 @@
       "loopMode": 2,
       "loopCount": 0,
       "remoteNode": "Video2"
+    },
+    {
+      "$type": "VideoCue",
+      "path": "Media/White.png",
+      "shader": "default_additive",
+      "zIndex": 101,
+      "alphaPath": "gradients/star_5_gradient.png",
+      "alphaMode": 3,
+      "startTime": "00:00:00",
+      "duration": "00:00:10",
+      "stompsOthers": true,
+      "dimmer": 1,
+      "volume": 1,
+      "fadeIn": 3,
+      "fadeOut": 5,
+      "fadeType": 1,
+      "brightness": 1,
+      "contrast": 1,
+      "gamma": 1,
+      "scale": 1,
+      "rotation": 0,
+      "offset": {
+        "X": 0,
+        "Y": 0
+      },
+      "playbackDuration": "00:00:10",
+      "xPos": 0,
+      "yPos": 0,
+      "shaderParameters": [
+        {
+          "name": "alphaSoftness",
+          "value": 0.2
+        }
+      ],
+      "dmxAddress": 0,
+      "qid": 1105,
+      "colour": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 1
+      },
+      "name": "Alpha Wipe Test",
+      "description": "White fill using gradient wipe alpha",
+      "trigger": 0,
+      "enabled": true,
+      "delay": "00:00:00",
+      "loopMode": 0,
+      "loopCount": 0,
+      "remoteNode": "Video2"
     }
   ]
 }

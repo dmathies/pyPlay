@@ -102,7 +102,7 @@ class Renderer:
             "whitePoint": 1.0,
             "bloomStrength": 0.25,
             "bloomThreshold": 1.0,
-            "sceneGammaIn": 1.0,
+            "bloomKnee": 0.5,
         }
         self.bloom_fbo = 0
         self.bloom_tex = 0
@@ -136,6 +136,7 @@ class Renderer:
         self.ndi_debug = os.environ.get("PYPLAY_NDI_DEBUG", "0") in ("1", "true", "True")
         self._last_ndi_capture_debug = 0.0
         self.identity_homography = np.eye(3, dtype=np.float32).flatten()
+        self.show_mesh_grid = False
 
         pygame.init()
         pygame.font.init()
@@ -311,9 +312,10 @@ class Renderer:
         ]  # Remove completed cues
 
         for active_cue in active_cues:
-            alpha = active_cue.alpha
-            if getattr(active_cue.cue, "fadeType", FadeType.Linear) == FadeType.SCurve:
-                alpha = self.smooth_step(active_cue.alpha)
+            alpha = self.apply_fade_curve(
+                active_cue.alpha,
+                getattr(active_cue.cue, "fadeType", FadeType.Linear),
+            )
             alpha = max(
                 0.0,
                 min(
@@ -414,7 +416,13 @@ class Renderer:
                                 alpha,
                                 active_cue.alpha_video_data,
                                 active_cue.cue.alphaMode,
-                                active_cue.cue.alphaSoftness,
+                                (
+                                    active_cue.shader_parameters.get(
+                                        "alphaSoftness", active_cue.cue.alphaSoftness
+                                    )
+                                    if active_cue.shader_parameters
+                                    else active_cue.cue.alphaSoftness
+                                ),
                                 active_cue.shader_parameters,
                             )
                         cue_elapsed = time.perf_counter() - cue_start
@@ -474,51 +482,6 @@ class Renderer:
             self.draw_texture_to_scene(self.mask_data, 1.0)
             mask_time += time.perf_counter() - mask_start
             self.set_shader(current_shader)
-
-        if self.framing is not None:
-            params = {
-                # per-screen homography
-                "homographyMatrix": self.homography_left,
-
-                # overlay styling
-                "gridColor": [1.0, 0.5, 1.0],
-                "opacity": 0.7,
-            }
-
-            if 0==1:
-                current_shader = self.current_shader
-                self.set_shader("grid_wire")
-
-                glEnable(GL_BLEND)
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-
-                # LEFT
-                self.set_parameters(params)
-                glViewport(0, 0, self.left_w, self.height)
-                glBindVertexArray(self.left_VAO)
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.grid_line_ebo)
-                glDrawElements(GL_LINES, self.grid_line_count, GL_UNSIGNED_INT, None)
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.left_EBO)
-                glBindVertexArray(0)
-
-                # Right
-                params["gridColor"] =  [0.0, 1.0, 0.0]
-                params["homographyMatrix"]=self.homography_right
-
-                self.set_parameters(params)
-                glViewport(self.left_w, 0, self.right_w, self.height)
-                glBindVertexArray(self.right_VAO)
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.grid_line_ebo)
-                glDrawElements(GL_LINES, self.grid_line_count, GL_UNSIGNED_INT, None)
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.right_EBO)
-                glBindVertexArray(0)
-
-                # Restore fill mode
-                glDisable(GL_BLEND)
-                glBindVertexArray(0)
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
-
-                self.set_shader(current_shader)
 
         post_start = time.perf_counter()
         if self.enable_postprocess:
@@ -594,6 +557,20 @@ class Renderer:
     @staticmethod
     def smooth_step(alpha):
         return alpha * alpha * (3 - 2 * alpha)
+
+    def set_show_mesh_grid(self, enabled: bool):
+        self.show_mesh_grid = bool(enabled)
+
+    @classmethod
+    def apply_fade_curve(cls, alpha: float, fade_type: FadeType) -> float:
+        alpha = max(0.0, min(1.0, alpha))
+        if fade_type == FadeType.SCurve:
+            return cls.smooth_step(alpha)
+        if fade_type == FadeType.Square:
+            return alpha * alpha
+        if fade_type == FadeType.InverseSquare:
+            return 1.0 - (1.0 - alpha) * (1.0 - alpha)
+        return alpha
 
     def maybe_profile_sync(self):
         if self.profile_gpu:
@@ -796,12 +773,46 @@ class Renderer:
         self.set_parameters({"homographyMatrix": self.homography_left})
         glBindVertexArray(self.left_VAO)
         glDrawElements(GL_TRIANGLES, self.left_index_count, GL_UNSIGNED_INT, None)
+        if self.show_mesh_grid:
+            self.set_shader("grid_wire")
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+            self.set_parameters(
+                {
+                    "homographyMatrix": self.homography_left,
+                    "gridColor": [1.0, 0.5, 1.0],
+                    "opacity": 0.7,
+                }
+            )
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.grid_line_ebo)
+            glDrawElements(GL_LINES, self.grid_line_count, GL_UNSIGNED_INT, None)
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.left_EBO)
+            glDisable(GL_BLEND)
+            self.set_shader("output_warp")
+            self.set_parameters({"sceneTex": 0, "flipY": 1 if flip_y else 0})
 
         if not self.single_screen and self.right_w > 0:
             glViewport(self.left_w, 0, self.right_w, self.height)
             self.set_parameters({"homographyMatrix": self.homography_right})
             glBindVertexArray(self.right_VAO)
             glDrawElements(GL_TRIANGLES, self.right_index_count, GL_UNSIGNED_INT, None)
+            if self.show_mesh_grid:
+                self.set_shader("grid_wire")
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+                self.set_parameters(
+                    {
+                        "homographyMatrix": self.homography_right,
+                        "gridColor": [0.0, 1.0, 0.0],
+                        "opacity": 0.7,
+                    }
+                )
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.grid_line_ebo)
+                glDrawElements(GL_LINES, self.grid_line_count, GL_UNSIGNED_INT, None)
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.right_EBO)
+                glDisable(GL_BLEND)
+                self.set_shader("output_warp")
+                self.set_parameters({"sceneTex": 0, "flipY": 1 if flip_y else 0})
 
         glBindVertexArray(0)
         glBindTexture(GL_TEXTURE_2D, 0)
@@ -1841,7 +1852,7 @@ class Renderer:
             {
                 "hdrScene": 0,
                 "threshold": self.post_parameters["bloomThreshold"],
-                "sceneGammaIn": self.post_parameters["sceneGammaIn"],
+                "knee": self.post_parameters["bloomKnee"],
             }
         )
         glViewport(0, 0, self.bloom_w, self.bloom_h)
@@ -1928,7 +1939,6 @@ class Renderer:
                 "gammaOut": self.post_parameters["gammaOut"],
                 "whitePoint": self.post_parameters["whitePoint"],
                 "bloomStrength": self.post_parameters["bloomStrength"],
-                "sceneGammaIn": self.post_parameters["sceneGammaIn"],
             }
         )
 

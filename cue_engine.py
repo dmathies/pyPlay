@@ -565,9 +565,9 @@ class CueEngine:
 
             if isinstance(active_cue.cue, ShaderParams):
                 if active_cue.cue.videoQid == "post":
-                    alpha = active_cue.alpha
-                    if active_cue.cue.fadeType == FadeType.SCurve:
-                        alpha = self.smooth_step(alpha)
+                    alpha = self.apply_fade_curve(
+                        active_cue.alpha, active_cue.cue.fadeType
+                    )
 
                     old = active_cue.shader_parameters_original or {}
                     new = active_cue.shader_parameters or {}
@@ -602,9 +602,9 @@ class CueEngine:
                     None,
                 )
                 if match:
-                    alpha = active_cue.alpha
-                    if active_cue.cue.fadeType == FadeType.SCurve:
-                        alpha = self.smooth_step(alpha)
+                    alpha = self.apply_fade_curve(
+                        active_cue.alpha, active_cue.cue.fadeType
+                    )
 
                     if not active_cue.shader_parameters:
                         # Make a copy of the current values
@@ -722,6 +722,17 @@ class CueEngine:
     @staticmethod
     def smooth_step(alpha):
         return alpha * alpha * (3 - 2 * alpha)
+
+    @classmethod
+    def apply_fade_curve(cls, alpha: float, fade_type: FadeType) -> float:
+        alpha = max(0.0, min(1.0, alpha))
+        if fade_type == FadeType.SCurve:
+            return cls.smooth_step(alpha)
+        if fade_type == FadeType.Square:
+            return alpha * alpha
+        if fade_type == FadeType.InverseSquare:
+            return 1.0 - (1.0 - alpha) * (1.0 - alpha)
+        return alpha
 
     @staticmethod
     def shader_params_to_dict(

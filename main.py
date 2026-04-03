@@ -438,7 +438,6 @@ def main():
                         )
                 elif event.type == WS_EVENT:
                     data = event.data
-                    print("Received from WebSocket:", data)
                     if data.get("corners"):
                         corners: list[Point] = [Point(x, y) for x, y in data["corners"]]
                         corners[2], corners[3] = corners[3], corners[2]
@@ -457,6 +456,18 @@ def main():
                             "type": "mesh_data",
                             "screen": screen,
                             "points": points,
+                        })
+                    elif data.get("type") == "mesh_grid_toggle":
+                        enabled = bool(data.get("enabled", False))
+                        renderer.set_show_mesh_grid(enabled)
+                        ws_handler.send_to_clients({
+                            "type": "mesh_grid_state",
+                            "enabled": renderer.show_mesh_grid,
+                        })
+                    elif data.get("type") == "mesh_grid_status":
+                        ws_handler.send_to_clients({
+                            "type": "mesh_grid_state",
+                            "enabled": renderer.show_mesh_grid,
                         })
                     elif data.get("type")=='mesh_update':
                         renderer.update_vbo_vertex(

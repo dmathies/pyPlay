@@ -84,22 +84,36 @@ vec3 getVideo1Color(vec2 finalTexCoord) {
 }
 
 vec3 getVideo2Color(vec2 finalTexCoord) {
+    vec3 color;
     if (video2Format == 0) {
-        return texture(video2RGB, finalTexCoord).rgb;
+        color = texture(video2RGB, finalTexCoord).rgb;
     } else if (video2Format == 1) {
         float y = texture(video2Y, finalTexCoord).r;
         vec2 uv = texture(video2UV, finalTexCoord).rg;
-        return NV12ToRGB(y, uv);
+        color = NV12ToRGB(y, uv);
     } else if (video2Format == 2) {
         float y = texture(video2Y, finalTexCoord).r;
         vec2 uvCoords = finalTexCoord;
         float u = texture(video2U, uvCoords).r;
         float v = texture(video2V, uvCoords).r;
-        return YUV420pToRGB(y, u, v);
+        color = YUV420pToRGB(y, u, v);
     } else {
         float y = texture(video2Y, finalTexCoord).r;
-        return vec3(y, y, y);
+        color = vec3(y, y, y);
     }
+    if (video1Linear == 0) color = sRGBToLinear(color);
+    return color;
+}
+
+float getVideo2MaskValue(vec2 finalTexCoord) {
+    if (video2Format == 0) {
+        return texture(video2RGB, finalTexCoord).r;
+    } else if (video2Format == 1) {
+        return texture(video2Y, finalTexCoord).r;
+    } else if (video2Format == 2) {
+        return texture(video2Y, finalTexCoord).r;
+    }
+    return texture(video2Y, finalTexCoord).r;
 }
 
 void main() {
@@ -130,14 +144,16 @@ void main() {
             break;
         case 2:  // Video 2 Red -> Alpha
         {
-            vec3 color2 = getVideo2Color(videoTC);
-            color = vec4(color1, color2.r * alpha);
+            float mask = getVideo2MaskValue(videoTC);
+            color = vec4(color1, mask * alpha);
             break;
         }
         case 3:  // Wipe
         {
-            vec3 color2 = getVideo2Color(videoTC);
-            float newAlpha = smoothstep(color2.r, color2.r + alphaSoftness, alpha * (1. + alphaSoftness));
+            float mask = getVideo2MaskValue(videoTC);
+            float softness = max(alphaSoftness, 1e-4);
+            float compensatedAlpha = mix(-0.5 * softness, 1.0 + 0.5 * softness, alpha);
+            float newAlpha = clamp((compensatedAlpha - mask) / softness + 0.5, 0.0, 1.0);
             color = vec4(color1, newAlpha);
             break;
         }

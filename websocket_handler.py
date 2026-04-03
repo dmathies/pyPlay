@@ -50,12 +50,9 @@ class WebSocketHandler:
 
     async def _broadcast(self, message: dict):
         msg = json.dumps(message)
-        # print(f"[WS] Clients: {self.clients}")
-        print(f"Broadcasting to {len(self.clients)} clients:", msg)
         for i, ws in enumerate(self.clients):
             try:
                 await ws.send(msg)
-                # print(f"[WS] Sent to client {i}")
             except Exception as e:
                 print(f"[WS] Failed to send to client {i}: {e}")
 
