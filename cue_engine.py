@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import os.path
 import time
 from enum import IntEnum
@@ -124,6 +125,16 @@ class CueEngine:
         self.dmx_state: dict[int, list[int]] = {}
         self.active_dmx_universe: Optional[int] = None
         self._last_dmx_debug_time = 0.0
+        self.dmx_trace_cues = {
+            part.strip() for part in os.environ.get("PYPLAY_DMX_TRACE_CUES", "").split(",") if part.strip()
+        }
+        self.dmx_trace_addresses = {
+            int(part.strip())
+            for part in os.environ.get("PYPLAY_DMX_TRACE_ADDRS", "").split(",")
+            if part.strip()
+        }
+        self.dmx_trace_every = max(1, int(os.environ.get("PYPLAY_DMX_TRACE_EVERY", "1")))
+        self._dmx_trace_counter = 0
         self.base_path = base_path
         self.profile_enabled = profile_enabled
 
@@ -472,6 +483,11 @@ class CueEngine:
     def tick(self) -> None:
         now = time.time()
         print_dmx_debug = (now - self._last_dmx_debug_time) >= 1.0
+        self._dmx_trace_counter += 1
+        should_trace_dmx = (
+            bool(self.dmx_trace_cues or self.dmx_trace_addresses)
+            and (self._dmx_trace_counter % self.dmx_trace_every) == 0
+        )
 
         for active_cue in self.active_cues:
             if isinstance(active_cue.cue, VideoCue) and not active_cue.playback_clock_started:
@@ -670,6 +686,8 @@ class CueEngine:
                         f"rgb=({dmx_color[0]:.3f}, {dmx_color[1]:.3f}, {dmx_color[2]:.3f}) "
                         f"layerAlpha={dmx_layer_alpha:.3f}"
                     )
+                if should_trace_dmx and self._should_trace_dmx_target(active_cue):
+                    self._print_dmx_trace(active_cue, dmx_color, dmx_layer_alpha)
 
         if print_dmx_debug:
             self._last_dmx_debug_time = now
@@ -769,3 +787,52 @@ class CueEngine:
         rgb = (values[i] / 255.0, values[i + 1] / 255.0, values[i + 2] / 255.0)
         layer_alpha = values[i + 3] / 255.0 if (i + 3) < len(values) else 1.0
         return rgb, layer_alpha
+
+    def _should_trace_dmx_target(self, active_cue: ActiveCue) -> bool:
+        cue_addr = getattr(active_cue.cue, "dmxAddress", None)
+        if self.dmx_trace_cues and active_cue.qid in self.dmx_trace_cues:
+            return True
+        if self.dmx_trace_addresses and cue_addr in self.dmx_trace_addresses:
+            return True
+        return False
+
+    def _print_dmx_trace(
+        self,
+        active_cue: ActiveCue,
+        dmx_color: tuple[float, float, float],
+        dmx_layer_alpha: float,
+    ) -> None:
+        cue_addr = getattr(active_cue.cue, "dmxAddress", None)
+        raw = self._get_dmx_raw_values(cue_addr)
+        print(
+            f"[DMXTrace] cue={active_cue.qid} addr={cue_addr} "
+            f"raw={raw} rgb=({dmx_color[0]:.3f},{dmx_color[1]:.3f},{dmx_color[2]:.3f}) "
+            f"layer={dmx_layer_alpha:.3f} alpha={active_cue.alpha:.3f} "
+            f"layerAlpha={active_cue.layer_alpha:.3f} dmxLayer={active_cue.dmx_layer_alpha:.3f}"
+        )
+
+    def _get_dmx_raw_values(self, dmx_address: Optional[int]) -> tuple[int, int, int, int] | None:
+        if not dmx_address:
+            return None
+
+        universe = self.active_dmx_universe
+        if universe is None and self.dmx_state:
+            universe = next(iter(sorted(self.dmx_state.keys())))
+        if universe is None:
+            return None
+
+        values = self.dmx_state.get(universe)
+        if values is None:
+            return None
+
+        channel = int(dmx_address)
+        if channel < 1 or channel > 510:
+            return None
+
+        i = channel - 1
+        return (
+            int(values[i]),
+            int(values[i + 1]),
+            int(values[i + 2]),
+            int(values[i + 3]) if (i + 3) < len(values) else 255,
+        )

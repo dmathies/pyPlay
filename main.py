@@ -519,6 +519,7 @@ def main():
                                 "points": loaded_mesh["right_grid"],
                                 "version": loaded_mesh["version"],
                             })
+
                             # also push corners so the perspective page can update
                             ws_handler.send_to_clients({
                                 "type": "perspective",
@@ -540,6 +541,15 @@ def main():
                         elif page == "framing":
                             ws_handler.send_to_clients({"framing": [asdict(p) for p in renderer.framing]})
 
+            latest_dmx_event = dmx_handler.pop_latest_event()
+            if latest_dmx_event is not None:
+                universe = latest_dmx_event.get("universe")
+                data = latest_dmx_event.get("data")
+                if universe is not None and data is not None:
+                    cue_engine.update_dmx_levels(int(universe), data)
+
+            cue_engine.tick()
+
             frame_for_ndi = renderer.render_frame(
                 cue_engine.active_cues, capture_frame=ndi_output.enabled
             )
@@ -555,8 +565,6 @@ def main():
                 if now - last_fps_time >= fps_print_interval:
                     # print(f"[Renderer] FPS: {fps:5.1f}")
                     last_fps_time = now
-
-            cue_engine.tick()
 
         except Exception as e:
             # Log and keep going instead of quitting the app

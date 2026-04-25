@@ -56,6 +56,36 @@ TEXTURE_UNIT_LOOKUP = [
 
 
 class Renderer:
+    @staticmethod
+    def _estimate_texture_bytes(frame: np.ndarray, data_type) -> int:
+        if data_type == GL_HALF_FLOAT:
+            bytes_per_channel = 2
+        elif data_type == GL_FLOAT:
+            bytes_per_channel = 4
+        else:
+            bytes_per_channel = frame.dtype.itemsize if hasattr(frame, "dtype") else 1
+
+        channels = frame.shape[2] if frame.ndim >= 3 else 1
+        return int(frame.shape[0] * frame.shape[1] * channels * bytes_per_channel)
+
+    @staticmethod
+    def _log_texture_metric(
+        video_data: VideoData,
+        stage: str,
+        elapsed_seconds: float,
+        bytes_uploaded: int,
+    ) -> None:
+        source_path = getattr(video_data, "source_path", "") or "<unknown>"
+        load_kind = getattr(video_data, "load_kind", "") or "unknown"
+        load_ms = getattr(video_data, "load_ms", 0.0)
+        print(
+            f"[TextureLoad] stage={stage} kind={load_kind} "
+            f"dims={video_data.width}x{video_data.height} "
+            f"bytes={bytes_uploaded} mb={bytes_uploaded / (1024.0 * 1024.0):.2f} "
+            f"upload_ms={elapsed_seconds * 1000.0:.2f} source_load_ms={load_ms:.2f} "
+            f"half={int(getattr(video_data, 'hdr_half_still', False))} path={source_path}"
+        )
+
     def __init__(
         self,
         single_screen: bool = False,
@@ -134,6 +164,7 @@ class Renderer:
         self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
         self.profile_gpu = os.environ.get("PYPLAY_PROFILE_GPU", "0") in ("1", "true", "True")
         self.ndi_debug = os.environ.get("PYPLAY_NDI_DEBUG", "0") in ("1", "true", "True")
+        self.max_fps = max(0, int(os.environ.get("PYPLAY_MAX_FPS", "60")))
         self._last_ndi_capture_debug = 0.0
         self.identity_homography = np.eye(3, dtype=np.float32).flatten()
         self.show_mesh_grid = False
@@ -502,7 +533,10 @@ class Renderer:
         pygame.display.flip()
         flip_time = time.perf_counter() - flip_start
 
-        self.clock.tick(25)
+        if self.max_fps > 0:
+            self.clock.tick(self.max_fps)
+        else:
+            self.clock.tick()
 
         # --- profiling end / print ---
         frame_end = time.perf_counter()
@@ -1228,16 +1262,35 @@ class Renderer:
             return
 
         if isinstance(frame, np.ndarray):
-            internal_format = GL_RGBA16F if video_data.hdr_still else GL_RGBA8
-            data_type = GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            channels = frame.shape[2] if frame.ndim == 3 else 1
+            if channels == 4:
+                external_format = GL_RGBA
+                internal_format = GL_RGBA16F if video_data.hdr_still else GL_RGBA8
+            elif channels == 3:
+                external_format = GL_RGB
+                internal_format = GL_RGB16F if video_data.hdr_still else GL_RGB8
+            else:
+                raise ValueError(f"Unsupported ndarray channel count: {channels}")
+            data_type = (
+                GL_HALF_FLOAT
+                if video_data.hdr_half_still
+                else GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            )
+            upload_start = time.perf_counter()
             textures["RGB"] = self.create_texture(
                 video_data.width,
                 video_data.height,
                 frame,
                 internal_format,
-                GL_RGBA,
+                external_format,
                 [0, 0, 0, 1.0],
                 data_type,
+            )
+            self._log_texture_metric(
+                video_data,
+                "create",
+                time.perf_counter() - upload_start,
+                self._estimate_texture_bytes(frame, data_type),
             )
             video_data.frame_pix_format = VideoFrameFormat.RGB
             video_data.textures = textures
@@ -1343,7 +1396,19 @@ class Renderer:
             return
 
         if isinstance(frame, np.ndarray):
-            data_type = GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            channels = frame.shape[2] if frame.ndim == 3 else 1
+            if channels == 4:
+                external_format = GL_RGBA
+            elif channels == 3:
+                external_format = GL_RGB
+            else:
+                raise ValueError(f"Unsupported ndarray channel count: {channels}")
+            data_type = (
+                GL_HALF_FLOAT
+                if video_data.hdr_half_still
+                else GL_FLOAT if video_data.hdr_still else GL_UNSIGNED_BYTE
+            )
+            upload_start = time.perf_counter()
             glBindTexture(GL_TEXTURE_2D, video_data.textures["RGB"])
             glTexSubImage2D(
                 GL_TEXTURE_2D,
@@ -1352,11 +1417,17 @@ class Renderer:
                 0,
                 video_data.width,
                 video_data.height,
-                GL_RGBA,
+                external_format,
                 data_type,
                 frame,
             )
             glBindTexture(GL_TEXTURE_2D, 0)
+            self._log_texture_metric(
+                video_data,
+                "update",
+                time.perf_counter() - upload_start,
+                self._estimate_texture_bytes(frame, data_type),
+            )
             return
 
         frame_format = frame.format.name.lower()

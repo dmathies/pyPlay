@@ -1,18 +1,39 @@
 from enum import IntEnum
-from enum import IntEnum
 from typing import Iterator, Optional
 import av
 from av.container import InputContainer, OutputContainer
 import threading
+import time
+from pathlib import Path
 import numpy as np
 import pygame
 
-try:
-    import OpenEXR  # type: ignore
-    import Imath  # type: ignore
-except ImportError:
-    OpenEXR = None
-    Imath = None
+from pyp_image import find_content_bounds_uv, read_exr_rgba, read_pyp_image
+
+
+def _media_size_mb(path: str) -> float:
+    try:
+        return Path(path).stat().st_size / (1024.0 * 1024.0)
+    except OSError:
+        return 0.0
+
+
+def _print_load_metric(
+    path: str,
+    elapsed_seconds: float,
+    video_data: "VideoData",
+    media_kind: str,
+) -> None:
+    size_mb = _media_size_mb(path)
+    video_data.source_path = path
+    video_data.load_kind = media_kind
+    video_data.load_ms = elapsed_seconds * 1000.0
+    print(
+        f"[MediaLoad] kind={media_kind} size={size_mb:.2f}MB "
+        f"dims={video_data.width}x{video_data.height} "
+        f"hdr={int(video_data.hdr_still)} half={int(video_data.hdr_half_still)} "
+        f"load_ms={elapsed_seconds * 1000.0:.2f} path={path}"
+    )
 
 
 class VideoFrameFormat(IntEnum):
@@ -38,6 +59,7 @@ class VideoStatus(IntEnum):
 class VideoData:
     def __init__(self):
         self.container: Optional[InputContainer | OutputContainer] = None
+        self.source_path = ""
         self.video_stream: av.VideoStream | None = None
         self.gen: Optional[Iterator[av.VideoFrame]] = None
         self.frame_format: Optional[int] = None
@@ -51,8 +73,11 @@ class VideoData:
         self.current_frame = None
         self.seek_start_seconds = 0.0
         self.hdr_still = False
+        self.hdr_half_still = False
         self.rgba_still = False
         self.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
+        self.load_kind = ""
+        self.load_ms = 0.0
 
     def release(self):
         # Close AV container / decoder
@@ -64,13 +89,17 @@ class VideoData:
                 print(f"[VideoData] Error closing container: {e}")
 
         self.container = None
+        self.source_path = ""
         self.video_stream = None
         self.gen = None
         self.current_frame = None
         self.status = VideoStatus.EMPTY
         self.hdr_still = False
+        self.hdr_half_still = False
         self.rgba_still = False
         self.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
+        self.load_kind = ""
+        self.load_ms = 0.0
 
     def get_next_frame(self):
         if self.still:
@@ -130,80 +159,41 @@ def seek_to_time(container, stream, target_time):
         print("Seek failed")
     return None
 
-
-def find_content_bounds_uv(image: np.ndarray, threshold: float = 1e-6) -> tuple[float, float, float, float]:
-    height, width = image.shape[:2]
-    if width <= 0 or height <= 0:
-        return (0.0, 0.0, 1.0, 1.0)
-
-    if image.ndim < 3:
-        mask = np.abs(image) > threshold
-    else:
-        rgb_mask = np.any(np.abs(image[..., : min(3, image.shape[2])]) > threshold, axis=-1)
-        if image.shape[2] >= 4:
-            alpha_mask = np.abs(image[..., 3]) > threshold
-            mask = rgb_mask | alpha_mask
-        else:
-            mask = rgb_mask
-
-    non_zero = np.argwhere(mask)
-    if non_zero.size == 0:
-        return (0.0, 0.0, 1.0, 1.0)
-
-    min_y, min_x = non_zero.min(axis=0)
-    max_y, max_x = non_zero.max(axis=0)
-
-    return (
-        float(min_x) / float(width),
-        float(min_y) / float(height),
-        float(max_x + 1) / float(width),
-        float(max_y + 1) / float(height),
-    )
-
-
 def load_exr_still(path: str, video_data: VideoData):
-    if OpenEXR is None or Imath is None:
-        raise RuntimeError(
-            "EXR support requires the OpenEXR Python package. Install 'OpenEXR'."
-        )
-
-    exr = OpenEXR.InputFile(path)
-    header = exr.header()
-    data_window = header["dataWindow"]
-    width = data_window.max.x - data_window.min.x + 1
-    height = data_window.max.y - data_window.min.y + 1
-
-    pixel_type = Imath.PixelType(Imath.PixelType.FLOAT)
-    channel_names = header["channels"].keys()
-
-    def read_channel(name: str, fallback: float = 0.0) -> np.ndarray:
-        if name in channel_names:
-            raw = exr.channel(name, pixel_type)
-            return np.frombuffer(raw, dtype=np.float32).reshape(height, width)
-        return np.full((height, width), fallback, dtype=np.float32)
-
-    rgba = np.stack(
-        [
-            read_channel("R"),
-            read_channel("G"),
-            read_channel("B"),
-            read_channel("A", 1.0),
-        ],
-        axis=-1,
-    ).astype(np.float32, copy=False)
+    image = read_exr_rgba(path)
 
     video_data.container = None
     video_data.video_stream = None
     video_data.gen = None
-    video_data.width = width
-    video_data.height = height
+    video_data.width = image.width
+    video_data.height = image.height
     video_data.frame_pix_format = VideoFrameFormat.RGB
     video_data.colour_space = VideoFrameColourSpace.RGB
     video_data.still = True
     video_data.hdr_still = True
+    video_data.hdr_half_still = False
     video_data.rgba_still = False
-    video_data.current_frame = rgba
-    video_data.content_bounds_uv = find_content_bounds_uv(rgba)
+    video_data.current_frame = image.pixels
+    video_data.content_bounds_uv = image.content_bounds_uv
+    video_data.status = VideoStatus.LOADED
+
+
+def load_pyp_still(path: str, video_data: VideoData):
+    image = read_pyp_image(path)
+
+    video_data.container = None
+    video_data.video_stream = None
+    video_data.gen = None
+    video_data.width = image.width
+    video_data.height = image.height
+    video_data.frame_pix_format = VideoFrameFormat.RGB
+    video_data.colour_space = VideoFrameColourSpace.RGB
+    video_data.still = True
+    video_data.hdr_still = True
+    video_data.hdr_half_still = True
+    video_data.rgba_still = False
+    video_data.current_frame = image.pixels
+    video_data.content_bounds_uv = image.content_bounds_uv
     video_data.status = VideoStatus.LOADED
 
 
@@ -222,6 +212,7 @@ def load_rgba_still(path: str, video_data: VideoData):
     video_data.colour_space = VideoFrameColourSpace.RGB
     video_data.still = True
     video_data.hdr_still = False
+    video_data.hdr_half_still = False
     video_data.rgba_still = True
     video_data.current_frame = rgba
     video_data.content_bounds_uv = find_content_bounds_uv(rgba, threshold=0.0)
@@ -230,11 +221,17 @@ def load_rgba_still(path: str, video_data: VideoData):
 
 def load_video(path, video_data=VideoData()):
     print(f"Load video: {path}")
+    load_start = time.perf_counter()
 
     try:
+        if path.lower().endswith(".pyp"):
+            load_pyp_still(path, video_data)
+            _print_load_metric(path, time.perf_counter() - load_start, video_data, "pyp")
+            return video_data
         if path.lower().endswith(".exr"):
             try:
                 load_exr_still(path, video_data)
+                _print_load_metric(path, time.perf_counter() - load_start, video_data, "exr")
                 return video_data
             except Exception as exr_error:
                 print(f"[EXR] Falling back to PyAV for {path}: {exr_error}")
@@ -243,6 +240,7 @@ def load_video(path, video_data=VideoData()):
                 still = True
         elif path.lower().endswith((".png", ".jpg", ".jpeg")):
             load_rgba_still(path, video_data)
+            _print_load_metric(path, time.perf_counter() - load_start, video_data, "image")
             return video_data
         elif path.lower().endswith((".jpg", ".jpeg", ".png")):
             container = av.open(path, format="image2")
@@ -286,6 +284,8 @@ def load_video(path, video_data=VideoData()):
         video_data.content_bounds_uv = (0.0, 0.0, 1.0, 1.0)
 
         video_data.status = VideoStatus.LOADED
+        media_kind = "still-av" if still else "video"
+        _print_load_metric(path, time.perf_counter() - load_start, video_data, media_kind)
 
     except Exception as e:
         print(f"Error loading video {path}: {e}")

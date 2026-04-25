@@ -3,6 +3,7 @@ import ArtNet
 import socket
 import os
 import time
+import threading
 import numpy as np
 from ArtNet.client import ArtNetClient
 from ArtNet.helper import serialize_device_info, deserialize_device_info
@@ -15,7 +16,15 @@ DMX_EVENT = pygame.USEREVENT + 1
 class DMXHandler:
     def __init__(self, config, local_ip="auto"):
         self.dmx_state = {}
+        self._latest_event_data = None
+        self._latest_lock = threading.Lock()
+        self._last_sequence_by_source = {}
         self.rdm_debug = os.environ.get("PYPLAY_RDM_DEBUG", "0") in (
+            "1",
+            "true",
+            "True",
+        )
+        self.sequence_debug = os.environ.get("PYPLAY_DMX_SEQUENCE_DEBUG", "0") in (
             "1",
             "true",
             "True",
@@ -76,6 +85,10 @@ class DMXHandler:
             if reply.get("Universe") != universe:
                 return
 
+            sequence = int(reply.get("Sequence") or 0) & 0xFF
+            if not self._accept_sequence(ip, universe, sequence):
+                return
+
             dmx_data = reply.get("Data") or []
             required_length = base_addr + 23
             if base_addr is None or base_addr <= 0 or len(dmx_data) < required_length:
@@ -124,9 +137,47 @@ class DMXHandler:
 
             if self.dmx_state != event_data:
                 self.dmx_state = event_data
-                pygame.event.post(pygame.event.Event(DMX_EVENT, data=event_data))
+                with self._latest_lock:
+                    self._latest_event_data = event_data
         except Exception as exc:
             print(f"[DMX] Failed to process packet from {ip}:{port}: {exc}")
+
+    def _accept_sequence(self, ip: str, universe: int, sequence: int) -> bool:
+        # Sequence 0 disables ordering checks per the Art-Net spec.
+        if sequence == 0:
+            return True
+
+        key = (ip, universe)
+        last_sequence = self._last_sequence_by_source.get(key)
+        if last_sequence is None or last_sequence == 0:
+            self._last_sequence_by_source[key] = sequence
+            return True
+
+        if sequence == last_sequence:
+            if self.sequence_debug:
+                print(
+                    f"[DMXSeq] Drop duplicate ip={ip} universe={universe} seq={sequence}"
+                )
+            return False
+
+        delta = (sequence - last_sequence) & 0xFF
+        is_newer = 0 < delta < 128
+        if is_newer:
+            self._last_sequence_by_source[key] = sequence
+            return True
+
+        if self.sequence_debug:
+            print(
+                f"[DMXSeq] Drop out-of-order ip={ip} universe={universe} "
+                f"seq={sequence} last={last_sequence}"
+            )
+        return False
+
+    def pop_latest_event(self):
+        with self._latest_lock:
+            event_data = self._latest_event_data
+            self._latest_event_data = None
+        return event_data
 
     def rdm_callback(self, device_id: int, parameter_id: int, device_info: dict):
         print(device_id, parameter_id)
