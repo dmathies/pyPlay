@@ -57,6 +57,37 @@ TEXTURE_UNIT_LOOKUP = [
 
 class Renderer:
     @staticmethod
+    def _is_effectively_black(color) -> bool:
+        if color is None:
+            return False
+        try:
+            return all(float(channel) <= 0.0 for channel in color[:3])
+        except (TypeError, ValueError, IndexError):
+            return False
+
+    @classmethod
+    def _should_skip_video_cue_draw(
+        cls,
+        active_cue: "ActiveCue",
+        alpha: float,
+        scene_shader_name: str,
+    ) -> bool:
+        if alpha <= 0.0:
+            return True
+
+        if getattr(active_cue, "dmx_layer_alpha", 1.0) <= 0.0:
+            return True
+
+        if "dmx_group" in scene_shader_name:
+            return False
+
+        if "additive" not in scene_shader_name:
+            return False
+
+        shader_parameters = getattr(active_cue, "shader_parameters", None) or {}
+        return cls._is_effectively_black(shader_parameters.get("dmxColor"))
+
+    @staticmethod
     def _estimate_texture_bytes(frame: np.ndarray, data_type) -> int:
         if data_type == GL_HALF_FLOAT:
             bytes_per_channel = 2
@@ -364,6 +395,23 @@ class Renderer:
                     texture_create_time += time.perf_counter() - create_start
                     active_cue.video_data.status = VideoStatus.READY
 
+                if active_cue.alpha_video_data.status == VideoStatus.LOADED:
+                    create_start = time.perf_counter()
+                    self.create_textures(active_cue.alpha_video_data)
+                    texture_create_time += time.perf_counter() - create_start
+                    active_cue.alpha_video_data.status = VideoStatus.READY
+
+                cue_ready_for_playback = (
+                    active_cue.video_data.status == VideoStatus.READY
+                    and active_cue.alpha_video_data.status in (VideoStatus.EMPTY, VideoStatus.READY)
+                )
+                if cue_ready_for_playback and hasattr(active_cue, "start_playback_clock"):
+                    active_cue.start_playback_clock()
+
+                scene_shader_name = self.get_scene_shader_name(active_cue)
+                if self._should_skip_video_cue_draw(active_cue, alpha, scene_shader_name):
+                    continue
+
                 if (
                     active_cue.video_data.status == VideoStatus.READY
                     and active_cue.paused == False
@@ -373,12 +421,6 @@ class Renderer:
                     frame = active_cue.video_data.get_next_frame()
                     self.update_textures(active_cue.video_data, frame)
                     decode_upload_time += time.perf_counter() - t0
-
-                if active_cue.alpha_video_data.status == VideoStatus.LOADED:
-                    create_start = time.perf_counter()
-                    self.create_textures(active_cue.alpha_video_data)
-                    texture_create_time += time.perf_counter() - create_start
-                    active_cue.alpha_video_data.status = VideoStatus.READY
 
                 if (
                     active_cue.alpha_video_data.status == VideoStatus.READY
@@ -392,9 +434,6 @@ class Renderer:
 
                 if active_cue.alpha_video_data.status == VideoStatus.EMPTY:
                     if active_cue.video_data.status == VideoStatus.READY:
-                        if hasattr(active_cue, "start_playback_clock"):
-                            active_cue.start_playback_clock()
-                        scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
                             self.draw_additive_holdout_to_scene(
@@ -424,9 +463,6 @@ class Renderer:
                         active_cue.video_data.status == VideoStatus.READY
                         and active_cue.alpha_video_data.status == VideoStatus.READY
                     ):
-                        if hasattr(active_cue, "start_playback_clock"):
-                            active_cue.start_playback_clock()
-                        scene_shader_name = self.get_scene_shader_name(active_cue)
                         cue_start = time.perf_counter()
                         if scene_shader_name == "scene_light_additive_holdout":
                             self.draw_additive_holdout_to_scene(
