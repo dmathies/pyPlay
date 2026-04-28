@@ -33,20 +33,22 @@ def build_output_path(source: Path, output: Path | None) -> Path:
     return output / source.with_suffix(".pyp").name
 
 
-def convert_file(source: Path, destination: Path, overwrite: bool) -> None:
+def convert_file(source: Path, destination: Path, overwrite: bool, include_alpha: bool) -> None:
     if destination.exists() and not overwrite:
         print(f"skip  {destination} (already exists)")
         return
 
     image = read_exr_rgba(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    write_pyp_image(destination, image.pixels[..., :3], image.content_bounds_uv)
-    print(f"write {source} -> {destination} ({image.width}x{image.height})")
+    pixels = image.pixels if include_alpha else image.pixels[..., :3]
+    write_pyp_image(destination, pixels, image.content_bounds_uv)
+    channels = pixels.shape[2] if pixels.ndim == 3 else 1
+    print(f"write {source} -> {destination} ({image.width}x{image.height}, {channels}ch)")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Convert EXR stills to pyPlay's preconverted .pyp RGBA16F format."
+        description="Convert EXR stills to pyPlay's preconverted .pyp float16 format."
     )
     parser.add_argument("inputs", nargs="+", help="EXR files or directories to convert.")
     parser.add_argument(
@@ -66,6 +68,11 @@ def main() -> int:
         action="store_true",
         help="Overwrite existing .pyp files.",
     )
+    parser.add_argument(
+        "--alpha",
+        action="store_true",
+        help="Store RGBA in the output .pyp instead of RGB-only.",
+    )
     args = parser.parse_args()
 
     sources = iter_exr_files(args.inputs, args.recursive)
@@ -77,7 +84,12 @@ def main() -> int:
 
     for source in sources:
         destination = build_output_path(source, args.output)
-        convert_file(source, destination, overwrite=args.overwrite)
+        convert_file(
+            source,
+            destination,
+            overwrite=args.overwrite,
+            include_alpha=args.alpha,
+        )
 
     return 0
 

@@ -61,26 +61,27 @@ vec3 YUV420pToRGB(float y, float u, float v) {
     return vec3(r, g, b);
 }
 
-vec3 getVideo1Color(vec2 finalTexCoord) {
-    vec3 color;
+vec4 getVideo1Sample(vec2 finalTexCoord) {
+    vec4 sampleColor;
     if (video1Format == 0) {
-        color = texture(video1RGB, finalTexCoord).rgb;
+        sampleColor = texture(video1RGB, finalTexCoord);
     } else if (video1Format == 1) {
         float y = texture(video1Y, finalTexCoord).r;
         vec2 uv = texture(video1UV, finalTexCoord).rg;
-        color = NV12ToRGB(y, uv);
+        sampleColor = vec4(NV12ToRGB(y, uv), 1.0);
     } else if (video1Format == 2) {
         float y = texture(video1Y, finalTexCoord).r;
         // Since U and V textures are half size, scale texture coordinates.
         vec2 uvCoords = finalTexCoord;
         float u = texture(video1U, uvCoords).r;
         float v = texture(video1V, uvCoords).r;
-        color = YUV420pToRGB(y, u, v);
+        sampleColor = vec4(YUV420pToRGB(y, u, v), 1.0);
     } else {
-        color = vec3(texture(video1Y, finalTexCoord).r);
+        float y = texture(video1Y, finalTexCoord).r;
+        sampleColor = vec4(y, y, y, 1.0);
     }
-    if (video1Linear == 0) color = sRGBToLinear(color);
-    return color;
+    if (video1Linear == 0) sampleColor.rgb = sRGBToLinear(sampleColor.rgb);
+    return sampleColor;
 }
 
 vec3 getVideo2Color(vec2 finalTexCoord) {
@@ -131,7 +132,8 @@ void main() {
     vec2 rotated = rotM * centered;
     vec2 videoTC = rotated + 0.5 + offset;
     
-    vec3 color1 = getVideo1Color(videoTC);
+    vec4 sample1 = getVideo1Sample(videoTC);
+    vec3 color1 = sample1.rgb;
     vec4 color;
     switch (alphaMode) {
         default:
@@ -139,8 +141,7 @@ void main() {
             color = vec4(color1, alpha);
             break;
         case 1:  // Video 1 Alpha
-            // TODO: Implement
-            color = vec4(color1, alpha);
+            color = vec4(color1, sample1.a * alpha);
             break;
         case 2:  // Video 2 Red -> Alpha
         {

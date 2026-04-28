@@ -4,6 +4,7 @@
 temp.dat
 /*venv
 
+
 bin/
 include/
 JCS/Media/
@@ -145,6 +146,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv310
 env/
 venv/
 ENV/

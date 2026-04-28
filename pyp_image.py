@@ -17,6 +17,7 @@ except ImportError:
 PYP_MAGIC = b"PYP1"
 PYP_DTYPE_FLOAT16 = 1
 PYP_CHANNELS_RGB = 3
+PYP_CHANNELS_RGBA = 4
 PYP_HEADER_STRUCT = struct.Struct("<4sIIII4f")
 
 
@@ -101,25 +102,25 @@ def read_exr_rgba(path: str | Path) -> PypImage:
 
 def write_pyp_image(
     path: str | Path,
-    rgb: np.ndarray,
+    pixels: np.ndarray,
     content_bounds_uv: tuple[float, float, float, float] | None = None,
 ) -> None:
-    if rgb.ndim != 3 or rgb.shape[2] != PYP_CHANNELS_RGB:
-        raise ValueError("PYP images must be HxWx3 RGB arrays.")
+    if pixels.ndim != 3 or pixels.shape[2] not in (PYP_CHANNELS_RGB, PYP_CHANNELS_RGBA):
+        raise ValueError("PYP images must be HxWx3 RGB or HxWx4 RGBA arrays.")
 
-    height, width, _ = rgb.shape
-    bounds = content_bounds_uv or find_content_bounds_uv(rgb)
-    rgb16 = np.ascontiguousarray(rgb.astype(np.float16, copy=False))
+    height, width, channels = pixels.shape
+    bounds = content_bounds_uv or find_content_bounds_uv(pixels)
+    pixels16 = np.ascontiguousarray(pixels.astype(np.float16, copy=False))
 
     header = PYP_HEADER_STRUCT.pack(
         PYP_MAGIC,
         width,
         height,
-        PYP_CHANNELS_RGB,
+        channels,
         PYP_DTYPE_FLOAT16,
         *bounds,
     )
-    Path(path).write_bytes(header + rgb16.tobytes())
+    Path(path).write_bytes(header + pixels16.tobytes())
 
 
 def read_pyp_image(path: str | Path) -> PypImage:
@@ -132,7 +133,7 @@ def read_pyp_image(path: str | Path) -> PypImage:
     )
     if magic != PYP_MAGIC:
         raise ValueError(f"Unsupported PYP magic in {path!s}")
-    if channels != PYP_CHANNELS_RGB:
+    if channels not in (PYP_CHANNELS_RGB, PYP_CHANNELS_RGBA):
         raise ValueError(f"Unsupported PYP channel count {channels} in {path!s}")
     if data_type != PYP_DTYPE_FLOAT16:
         raise ValueError(f"Unsupported PYP data type {data_type} in {path!s}")
@@ -144,10 +145,10 @@ def read_pyp_image(path: str | Path) -> PypImage:
             f"PYP payload size mismatch in {path!s}: expected {expected_bytes}, got {len(payload)}"
         )
 
-    rgb = np.frombuffer(payload, dtype=np.float16).reshape(height, width, channels)
+    pixels = np.frombuffer(payload, dtype=np.float16).reshape(height, width, channels)
     return PypImage(
         width=width,
         height=height,
-        pixels=np.ascontiguousarray(rgb),
+        pixels=np.ascontiguousarray(pixels),
         content_bounds_uv=tuple(float(v) for v in bounds),
     )

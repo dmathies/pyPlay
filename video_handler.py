@@ -180,6 +180,7 @@ def load_exr_still(path: str, video_data: VideoData):
 
 def load_pyp_still(path: str, video_data: VideoData):
     image = read_pyp_image(path)
+    channels = image.pixels.shape[2] if image.pixels.ndim == 3 else 1
 
     video_data.container = None
     video_data.video_stream = None
@@ -191,7 +192,7 @@ def load_pyp_still(path: str, video_data: VideoData):
     video_data.still = True
     video_data.hdr_still = True
     video_data.hdr_half_still = True
-    video_data.rgba_still = False
+    video_data.rgba_still = channels == 4
     video_data.current_frame = image.pixels
     video_data.content_bounds_uv = image.content_bounds_uv
     video_data.status = VideoStatus.LOADED
