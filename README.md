@@ -24,15 +24,15 @@ This branch is the newer active version of the project and includes support for 
 
 ## Repository Layout
 
-- [main.py](/d:/Derek/GAOS/KB/pyPlay/main.py) - main runtime entry point
-- [renderer.py](/d:/Derek/GAOS/KB/pyPlay/renderer.py) - rendering pipeline
-- [cue_engine.py](/d:/Derek/GAOS/KB/pyPlay/cue_engine.py) - cue playback engine
-- [qplayer_config.py](/d:/Derek/GAOS/KB/pyPlay/qplayer_config.py) - qproj loading and data model
-- [osc_handler.py](/d:/Derek/GAOS/KB/pyPlay/osc_handler.py) - OSC receive/transmit handling
-- [websocket_handler.py](/d:/Derek/GAOS/KB/pyPlay/websocket_handler.py) - WebSocket server (for web UI)
-- [http_handler.py](/d:/Derek/GAOS/KB/pyPlay/http_handler.py) - static file server
-- [scripts/convert_exr_to_pyp.py](/d:/Derek/GAOS/KB/pyPlay/scripts/convert_exr_to_pyp.py) - EXR conversion utility
-- [pyPlayUI](/d:/Derek/GAOS/KB/pyPlay/pyPlayUI) - React/Vite UI project
+- [main.py](main.py) - main runtime entry point
+- [renderer.py](renderer.py) - rendering pipeline
+- [cue_engine.py](cue_engine.py) - cue playback engine
+- [qplayer_config.py](qplayer_config.py) - qproj loading and data model
+- [osc_handler.py](osc_handler.py) - OSC receive/transmit handling
+- [websocket_handler.py](websocket_handler.py) - WebSocket server (for web UI)
+- [http_handler.py](http_handler.py) - static file server
+- [scripts/convert_exr_to_pyp.py](scripts/convert_exr_to_pyp.py) - EXR conversion utility
+- [pyPlayUI](pyPlayUI) - React/Vite UI project
 
 ## Requirements
 
@@ -41,7 +41,7 @@ This branch is the newer active version of the project and includes support for 
 - FFmpeg/PyAV-compatible media environment
 - Network access for OSC / WebSocket / Art-Net use cases
 
-Python dependencies are listed in [requirements.txt](/d:/Derek/GAOS/KB/pyPlay/requirements.txt).
+Python dependencies are listed in [requirements.txt](requirements.txt).
 
 ## Installation
 
@@ -146,7 +146,7 @@ python scripts\convert_exr_to_pyp.py assets\stills -r --overwrite
 
 ## UI Development
 
-The React UI lives in [pyPlayUI](/d:/Derek/GAOS/KB/pyPlay/pyPlayUI).
+The React UI lives in [pyPlayUI](pyPlayUI).
 
 Start the UI dev server:
 
@@ -166,7 +166,7 @@ npm run build
 
 `pyPlay` is licensed under the GNU General Public License v3.0.
 
-See [LICENSE](/d:/Derek/GAOS/KB/pyPlay/LICENSE) for the full license text.
+See [LICENSE](LICENSE) for the full license text.
 
 ## Notes
 
