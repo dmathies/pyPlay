@@ -1,19 +1,23 @@
 # pyPlay
 
-`pyPlay` is a Python-based media playback and projection tool for qproj show files. It combines OpenGL rendering, cue playback, warp-mesh output mapping, OSC control, WebSocket control, Art-Net/DMX integration, DMX-controlled image planes, and optional NDI output.
+A flexible and performant video player for theatre.
+
+`pyPlay` is a Python-based media playback and projection tool using `qproj` show files from [QPlayer](https://github.com/space928/QPlayer). It combines OpenGL rendering, cue playback, warp-mesh output mapping, OSC control, WebSocket control, Art-Net/DMX integration, DMX-controlled image planes, and optional NDI output.
 
 This branch is the newer active version of the project and includes support for preconverted `.pyp` still-image assets in addition to existing media playback workflows.
 
 ## Features
 
 - Plays `.qproj` cue files, defaulting to `Cues.qproj`
-- OpenGL renderer with bloom and tonemapping
+- OpenGL renderer with bloom and tonemap post processing
 - DMX-driven image planes for lighting and media control workflows
-- Single-screen debug mode and hidden-window NDI-only mode
-- Output warp mesh support with versioned mesh saves
+- Single or dual displays
+- Independent perspective and mesh warping (for dual projector use)
+    - versioned mesh warp save files
+- Up to 4 framing shutters
+    - Width, angle and softness setting for each shutter.
 - OSC remote control and feedback
-- WebSocket control channel
-- HTTP static UI hosting
+- HTTP UI for perspective, mesh warp, and framing.
 - Art-Net / DMX support
 - Optional NDI output
 - EXR-to-`.pyp` conversion for faster still-image workflows
@@ -25,7 +29,7 @@ This branch is the newer active version of the project and includes support for 
 - [cue_engine.py](/d:/Derek/GAOS/KB/pyPlay/cue_engine.py) - cue playback engine
 - [qplayer_config.py](/d:/Derek/GAOS/KB/pyPlay/qplayer_config.py) - qproj loading and data model
 - [osc_handler.py](/d:/Derek/GAOS/KB/pyPlay/osc_handler.py) - OSC receive/transmit handling
-- [websocket_handler.py](/d:/Derek/GAOS/KB/pyPlay/websocket_handler.py) - WebSocket server
+- [websocket_handler.py](/d:/Derek/GAOS/KB/pyPlay/websocket_handler.py) - WebSocket server (for web UI)
 - [http_handler.py](/d:/Derek/GAOS/KB/pyPlay/http_handler.py) - static file server
 - [scripts/convert_exr_to_pyp.py](/d:/Derek/GAOS/KB/pyPlay/scripts/convert_exr_to_pyp.py) - EXR conversion utility
 - [pyPlayUI](/d:/Derek/GAOS/KB/pyPlay/pyPlayUI) - React/Vite UI project
@@ -40,6 +44,13 @@ This branch is the newer active version of the project and includes support for 
 Python dependencies are listed in [requirements.txt](/d:/Derek/GAOS/KB/pyPlay/requirements.txt).
 
 ## Installation
+
+Clone the repo:
+
+```powershell
+git clone https://github.com/dmathies/pyPlay.git
+cd pyPlay
+```
 
 Create and activate a virtual environment, then install dependencies:
 
@@ -105,8 +116,6 @@ By default the current code exposes:
 - OSC receive on port `8000`
 - OSC transmit/broadcast on port `9000`
 
-The current defaults avoid an HTTP/OSC port collision: HTTP serves on `8080` while OSC receives on `8000`.
-
 ## DMX Interface
 
 `pyPlay` can render image planes that are controlled from DMX/Art-Net data, making it useful for lighting-style playback and media layers that need to respond like fixtures.
@@ -116,7 +125,6 @@ Using the additive blending shaders, you can simlate DMX controlled lights in th
 ## `.pyp` Still Images
 
 This version supports `.pyp` assets as a preconverted still-image format. The `.pyp` assets are full HDR (half-float) format but are much faster to load than EXR.
-
 
 Convert EXR files with:
 
