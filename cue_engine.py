@@ -59,6 +59,9 @@ class ActiveCue:
         self.shader_parameters: Optional[dict[str, float]] = None
         self.shader_parameters_original: Optional[dict[str, float]] = None
         self.playback_clock_started = not isinstance(cue, VideoCue)
+        self.dmx_hold_until: float = 0.0
+        self.dmx_latched_color: tuple[float, float, float] = (1.0, 1.0, 1.0)
+        self.dmx_latched_layer_alpha: float = 1.0
 
     def pause(self):
         self.paused = True
@@ -73,9 +76,9 @@ class ActiveCue:
         if self.playback_clock_started:
             return
 
-        self.cue_start_time = time.time() if now is None else now
+        start_time = time.time() if now is None else now
         if self.paused:
-            self.pause_time = self.cue_start_time
+            self.pause_time = start_time
         self.playback_clock_started = True
 
     def position(self):
@@ -135,6 +138,9 @@ class CueEngine:
         }
         self.dmx_trace_every = max(1, int(os.environ.get("PYPLAY_DMX_TRACE_EVERY", "1")))
         self._dmx_trace_counter = 0
+        self.dmx_startup_hold_seconds = max(
+            0.0, float(os.environ.get("PYPLAY_DMX_STARTUP_HOLD", "0.15"))
+        )
         self.base_path = base_path
         self.profile_enabled = profile_enabled
 
@@ -184,8 +190,9 @@ class CueEngine:
                 active_cue.z_index = cue.zIndex
                 if cue.startTime is not None:
                     active_cue.media_startTime = cue.startTime
-                if cue.duration is not None:
-                    active_cue.media_duration = cue.duration
+                playback_duration = self.resolve_video_cue_duration(cue)
+                if playback_duration is not None:
+                    active_cue.media_duration = playback_duration
                 if cue.volume is not None:
                     active_cue.media_volume = cue.volume
                 if cue.fadeIn is not None:
@@ -195,12 +202,16 @@ class CueEngine:
                 if cue.fadeType is not None:
                     active_cue.media_fadeType = cue.fadeType
                 active_cue.media_stompsOthers = cue.stompsOthers
-                active_cue.shader_parameters = self.shader_params_to_dict(cue.shaderParameters)
+                active_cue.shader_parameters = self.normalize_shader_parameters(
+                    self.shader_params_to_dict(cue.shaderParameters)
+                )
                 self.apply_initial_video_shader_parameters(active_cue, cue)
             elif isinstance(cue, ShaderParams):
                 active_cue.media_fadeIn = cue.fadeIn
                 active_cue.media_fadeType = cue.fadeType
-                active_cue.shader_parameters = self.shader_params_to_dict(cue.shaderParameters)
+                active_cue.shader_parameters = self.normalize_shader_parameters(
+                    self.shader_params_to_dict(cue.shaderParameters)
+                )
                 active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
             elif isinstance(cue, VideoFraming):
                 active_cue.media_fadeIn = cue.fadeIn
@@ -242,10 +253,25 @@ class CueEngine:
         active_cue.shader_parameters["dmxColor"] = dmx_color
         active_cue.shader_parameters["dimmer"] = cue.dimmer
         active_cue.shader_parameters["rotation"] = cue.rotation
-        active_cue.shader_parameters["offset"] = (cue.offset.x, cue.offset.y)
+        active_cue.shader_parameters["offset"] = self._coerce_offset_tuple(
+            (cue.offset.x, cue.offset.y)
+        )
         active_cue.shader_parameters["scale"] = (cue.scale, cue.scale)
+        active_cue.shader_parameters = self.normalize_shader_parameters(
+            active_cue.shader_parameters
+        )
         active_cue.dmx_layer_alpha = dmx_layer_alpha
+        active_cue.dmx_latched_color = dmx_color
+        active_cue.dmx_latched_layer_alpha = dmx_layer_alpha
         active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
+
+    def arm_dmx_startup_hold(self, active_cue: ActiveCue, now: Optional[float] = None) -> None:
+        hold_seconds = self.dmx_startup_hold_seconds
+        active_cue.dmx_hold_until = 0.0 if hold_seconds <= 0.0 else (time.time() if now is None else now) + hold_seconds
+
+    @staticmethod
+    def should_hold_dmx(active_cue: ActiveCue, now: float) -> bool:
+        return now < getattr(active_cue, "dmx_hold_until", 0.0)
 
     def stop(self, cue_id: Optional[str] = None):
         if cue_id is None:
@@ -275,12 +301,14 @@ class CueEngine:
             match.unpause()
 
     def preload(self, cue_id: str, start_time: float):
+        cue_id = str(cue_id)
         match = next((q for q in self.active_cues if q.qid == cue_id), None)
         if not match:
             self.go(cue_id, True, start_time)
         pass
 
     def go(self, cue_id: str = "next", paused: bool = False, start_time: float = 0.0):
+        cue_id = str(cue_id)
         if cue_id == "next":
             self.last_cue = (self.last_cue + 1) % len(self.qid_list)
             cue_id = self.qid_list[self.last_cue]
@@ -320,17 +348,18 @@ class CueEngine:
                     match.dmx_layer_alpha = 1.0
 
                     match.media_startTime = cue.startTime or timedelta()
-                    match.media_duration = cue.duration or timedelta()
+                    match.media_duration = self.resolve_video_cue_duration(cue) or timedelta()
                     match.media_volume = cue.volume or 1
                     match.media_fadeIn = cue.fadeIn or 0
                     match.media_fadeOut = cue.fadeOut or 0
                     match.media_fadeType = cue.fadeType or FadeType.Linear
                     match.media_stompsOthers = cue.stompsOthers
 
-                    match.shader_parameters = self.shader_params_to_dict(
-                        cue.shaderParameters
+                    match.shader_parameters = self.normalize_shader_parameters(
+                        self.shader_params_to_dict(cue.shaderParameters)
                     )
                     self.apply_initial_video_shader_parameters(match, cue)
+                    self.arm_dmx_startup_hold(match, match.cue_start_time)
                 elif isinstance(cue, VideoFraming):
                     match.cue_start_time = time.time()
                     match.alpha = 0.0
@@ -349,8 +378,13 @@ class CueEngine:
                     match.pause_time = match.cue_start_time
                     match.media_fadeIn = cue.fadeIn
                     match.media_fadeType = cue.fadeType
-                    match.shader_parameters = self.shader_params_to_dict(
-                        cue.shaderParameters
+                    target = next(
+                        (q for q in self.active_cues if q.qid == cue.videoQid),
+                        None,
+                    )
+                    match.shader_parameters = self.normalize_shader_parameters(
+                        self.shader_params_to_dict(cue.shaderParameters),
+                        self._get_reference_offset(target.shader_parameters if target else None),
                     )
                     if cue.videoQid == "post":
                         old = self.renderer.get_post_parameters()
@@ -359,10 +393,6 @@ class CueEngine:
                             for key, value in match.shader_parameters.items()
                         }
                     else:
-                        target = next(
-                            (q for q in self.active_cues if q.qid == cue.videoQid),
-                            None,
-                        )
                         if target and target.shader_parameters:
                             match.shader_parameters_original = target.shader_parameters.copy()
                         else:
@@ -380,10 +410,10 @@ class CueEngine:
                 self.begin_new_playback(cue, paused=paused)
 
             elif isinstance(cue, StopCue):
-                match = next(
-                    (q for q in self.active_cues if q.qid == cue.stopQid), None
-                )
-                if match:
+                stop_qids = set(cue.stopQids)
+                for match in self.active_cues:
+                    if match.qid not in stop_qids:
+                        continue
                     self.handle_stop(
                         match,
                         cue.stopMode,
@@ -404,7 +434,10 @@ class CueEngine:
         active_cue.media_startTime = getattr(
             cue, "startTime", active_cue.media_startTime
         )
-        active_cue.media_duration = getattr(cue, "duration", active_cue.media_duration)
+        if isinstance(cue, VideoCue):
+            active_cue.media_duration = self.resolve_video_cue_duration(cue) or active_cue.media_duration
+        else:
+            active_cue.media_duration = getattr(cue, "duration", active_cue.media_duration)
 
         active_cue.media_volume = getattr(cue, "volume", 0)
         active_cue.media_fadeIn = getattr(cue, "fadeIn", 0)
@@ -416,14 +449,15 @@ class CueEngine:
 
         active_cue.paused = paused
         active_cue.pause_time = active_cue.cue_start_time
-        active_cue.shader_parameters = self.shader_params_to_dict(
-            getattr(cue, "shaderParameters", [])
+        active_cue.shader_parameters = self.normalize_shader_parameters(
+            self.shader_params_to_dict(getattr(cue, "shaderParameters", []))
         )
         active_cue.shader_parameters_original = active_cue.shader_parameters.copy()
 
         if isinstance(cue, VideoCue):
             active_cue.playback_clock_started = False
             self.apply_initial_video_shader_parameters(active_cue, cue)
+            self.arm_dmx_startup_hold(active_cue, active_cue.cue_start_time)
 
             self.video_handler.load_video_async(self.resolve_path(cue.path), active_cue.video_data)
             if cue.alphaPath:
@@ -450,6 +484,12 @@ class CueEngine:
                     )
 
         pygame.event.post(pygame.event.Event(CUE_EVENT, data=active_cue))
+
+    @staticmethod
+    def resolve_video_cue_duration(cue: VideoCue) -> Optional[timedelta]:
+        if cue.playbackDuration is not None:
+            return cue.playbackDuration
+        return cue.duration
 
     def handle_stop(
         self,
@@ -535,6 +575,7 @@ class CueEngine:
                     and isinstance(active_cue.cue, VideoCue)
                     and active_cue.video_data
                     and active_cue.video_data.still
+                    and active_cue.video_data.video_stream is None
                     and (
                         active_cue.cue.duration is None
                         or active_cue.cue.duration.total_seconds() == 0
@@ -632,6 +673,10 @@ class CueEngine:
                             active_cue.shader_parameters = {}
 
                     if active_cue.cue.shaderParameters:
+                        active_cue.shader_parameters = self.normalize_shader_parameters(
+                            active_cue.shader_parameters,
+                            self._get_reference_offset(match.shader_parameters),
+                        )
                         old = match.shader_parameters_original
                         new = active_cue.shader_parameters
                         self.interpolate_dicts(match.shader_parameters, old, new, alpha)
@@ -653,9 +698,13 @@ class CueEngine:
                             match.layer_alpha = (1.0 - alpha) * start_alpha + alpha * layer_alpha_value
 
                         if self.profile_enabled:
+                            target_offset = None
+                            if match.shader_parameters:
+                                target_offset = match.shader_parameters.get("offset")
                             print(
                                 f"[ShaderParamsCue] Apply qid={active_cue.qid} "
-                                f"target={active_cue.cue.videoQid} alpha={alpha:.3f}"
+                                f"target={active_cue.cue.videoQid} alpha={alpha:.3f} "
+                                f"params={active_cue.shader_parameters} targetOffset={target_offset}"
                             )
                         # print(f"Interpolated shader parameters: {match.shader_parameters}")
 
@@ -676,6 +725,12 @@ class CueEngine:
             elif isinstance(active_cue.cue, VideoCue):
                 # Optional per-cue DMX RGB + layer alpha control. Missing/invalid address means no change.
                 dmx_color, dmx_layer_alpha = self.get_dmx_rgba(active_cue.cue.dmxAddress)
+                if self.should_hold_dmx(active_cue, now):
+                    dmx_color = active_cue.dmx_latched_color
+                    dmx_layer_alpha = active_cue.dmx_latched_layer_alpha
+                else:
+                    active_cue.dmx_latched_color = dmx_color
+                    active_cue.dmx_latched_layer_alpha = dmx_layer_alpha
                 if active_cue.shader_parameters is None:
                     active_cue.shader_parameters = {}
                 active_cue.shader_parameters["dmxColor"] = dmx_color
@@ -732,10 +787,24 @@ class CueEngine:
         # interp = {}
 
         for key in dst:
+            if key not in old or key not in new:
+                continue
+
             old_val = old[key]
-            if not isinstance(old_val, tuple) and key in new:
-                new_val = new[key]
+            new_val = new[key]
+            if isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
                 dst[key] = (1 - alpha) * old_val + alpha * new_val
+            elif (
+                isinstance(old_val, (tuple, list))
+                and isinstance(new_val, (tuple, list))
+                and len(old_val) == len(new_val)
+                and all(isinstance(v, (int, float)) for v in old_val)
+                and all(isinstance(v, (int, float)) for v in new_val)
+            ):
+                dst[key] = tuple(
+                    (1 - alpha) * float(old_component) + alpha * float(new_component)
+                    for old_component, new_component in zip(old_val, new_val)
+                )
 
     @staticmethod
     def smooth_step(alpha):
@@ -759,6 +828,55 @@ class CueEngine:
         if not shader_params:
             return {}
         return {p.name: p.value for p in shader_params}
+
+    @staticmethod
+    def _coerce_offset_tuple(
+        value: Any,
+        fallback: tuple[float, float] = (0.0, 0.0),
+    ) -> tuple[float, float]:
+        if isinstance(value, Point):
+            return (float(value.x), float(value.y))
+        if isinstance(value, (tuple, list)) and len(value) >= 2:
+            return (float(value[0]), float(value[1]))
+        return fallback
+
+    @classmethod
+    def _get_reference_offset(
+        cls,
+        parameters: Optional[dict[str, Any]],
+        fallback: tuple[float, float] = (0.0, 0.0),
+    ) -> tuple[float, float]:
+        if not parameters:
+            return fallback
+        return cls._coerce_offset_tuple(parameters.get("offset"), fallback)
+
+    @classmethod
+    def normalize_shader_parameters(
+        cls,
+        parameters: Optional[dict[str, Any]],
+        reference_offset: tuple[float, float] = (0.0, 0.0),
+    ) -> dict[str, Any]:
+        normalized = dict(parameters or {})
+        offset = cls._coerce_offset_tuple(normalized.get("offset"), reference_offset)
+
+        x_value = None
+        y_value = None
+        for alias in ("xPos", "Xpos", "xpos"):
+            if alias in normalized:
+                x_value = float(normalized.pop(alias))
+                break
+        for alias in ("yPos", "Ypos", "ypos"):
+            if alias in normalized:
+                y_value = float(normalized.pop(alias))
+                break
+
+        if x_value is not None or y_value is not None or "offset" in normalized:
+            normalized["offset"] = (
+                offset[0] if x_value is None else x_value,
+                offset[1] if y_value is None else y_value,
+            )
+
+        return normalized
 
     def get_dmx_rgb(self, dmx_address: Optional[int]) -> tuple[float, float, float]:
         return self.get_dmx_rgba(dmx_address)[0]

@@ -66,26 +66,37 @@ class Renderer:
             return False
 
     @classmethod
+    def _get_skip_video_cue_reason(
+        cls,
+        active_cue: "ActiveCue",
+        alpha: float,
+        scene_shader_name: str,
+    ) -> str | None:
+        if alpha <= 0.0:
+            return "alpha<=0"
+
+        if getattr(active_cue, "dmx_layer_alpha", 1.0) <= 0.0:
+            return "dmx_layer_alpha<=0"
+
+        if "dmx_group" in scene_shader_name:
+            return None
+
+        if "additive" not in scene_shader_name:
+            return None
+
+        shader_parameters = getattr(active_cue, "shader_parameters", None) or {}
+        if cls._is_effectively_black(shader_parameters.get("dmxColor")):
+            return "dmxColor=black"
+        return None
+
+    @classmethod
     def _should_skip_video_cue_draw(
         cls,
         active_cue: "ActiveCue",
         alpha: float,
         scene_shader_name: str,
     ) -> bool:
-        if alpha <= 0.0:
-            return True
-
-        if getattr(active_cue, "dmx_layer_alpha", 1.0) <= 0.0:
-            return True
-
-        if "dmx_group" in scene_shader_name:
-            return False
-
-        if "additive" not in scene_shader_name:
-            return False
-
-        shader_parameters = getattr(active_cue, "shader_parameters", None) or {}
-        return cls._is_effectively_black(shader_parameters.get("dmxColor"))
+        return cls._get_skip_video_cue_reason(active_cue, alpha, scene_shader_name) is not None
 
     @staticmethod
     def _estimate_texture_bytes(frame: np.ndarray, data_type) -> int:
@@ -195,7 +206,7 @@ class Renderer:
         self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
         self.profile_gpu = os.environ.get("PYPLAY_PROFILE_GPU", "0") in ("1", "true", "True")
         self.ndi_debug = os.environ.get("PYPLAY_NDI_DEBUG", "0") in ("1", "true", "True")
-        self.max_fps = max(0, int(os.environ.get("PYPLAY_MAX_FPS", "60")))
+        self.max_fps = max(0, int(os.environ.get("PYPLAY_MAX_FPS", "25")))
         self._last_ndi_capture_debug = 0.0
         self.identity_homography = np.eye(3, dtype=np.float32).flatten()
         self.show_mesh_grid = False
@@ -409,7 +420,8 @@ class Renderer:
                     active_cue.start_playback_clock()
 
                 scene_shader_name = self.get_scene_shader_name(active_cue)
-                if self._should_skip_video_cue_draw(active_cue, alpha, scene_shader_name):
+                skip_reason = self._get_skip_video_cue_reason(active_cue, alpha, scene_shader_name)
+                if skip_reason is not None:
                     continue
 
                 if (
@@ -746,6 +758,7 @@ class Renderer:
                 if uses_dmx_group_map:
                     self.bind_dmx_lookup_texture()
                     self.set_parameters({"dmxGroupMapEnabled": 1})
+
         else:
             self.set_parameters({"alphaMode": 0,
                                  "video1Format": video.frame_pix_format,

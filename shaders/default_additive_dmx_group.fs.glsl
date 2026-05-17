@@ -35,6 +35,7 @@ uniform float contrast;
 uniform float gamma;
 uniform vec3 dmxColor;
 uniform int video1Linear;
+uniform int dmxStart;
 uniform int tungstenStart;
 uniform float tungstenIntensity;
 
@@ -114,7 +115,7 @@ vec3 getVideo2Color(vec2 finalTexCoord) {
 
 int getDmxGroupIndex(vec2 finalTexCoord) {
     float groupSample = getVideo2Color(finalTexCoord).r;
-    return clamp(int(floor(groupSample * 255.0 + 0.5)), 0, 127);
+    return clamp(int(floor(groupSample * 255.0 + 0.5)) + dmxStart, 0, 127);
 }
 
 vec4 getDmxGroupRGBA(vec2 finalTexCoord) {

@@ -152,3 +152,41 @@ def read_pyp_image(path: str | Path) -> PypImage:
         pixels=np.ascontiguousarray(pixels),
         content_bounds_uv=tuple(float(v) for v in bounds),
     )
+
+
+def write_exr_rgba(path: str | Path, pixels: np.ndarray) -> None:
+    if OpenEXR is None or Imath is None:
+        raise RuntimeError(
+            "EXR support requires the OpenEXR Python package. Install 'OpenEXR'."
+        )
+
+    if pixels.ndim != 3 or pixels.shape[2] < 3:
+        raise ValueError("Pixels must be HxWxC array with at least 3 channels.")
+
+    height, width, channels = pixels.shape
+    
+    # Ensure we have RGBA (add alpha channel if needed)
+    if channels == 3:
+        alpha = np.ones((height, width, 1), dtype=np.float32)
+        pixels_rgba = np.concatenate([pixels[..., :3].astype(np.float32), alpha], axis=-1)
+    else:
+        pixels_rgba = pixels[..., :4].astype(np.float32)
+
+    # Create header
+    header = OpenEXR.Header(width, height)
+    header["channels"] = {
+        "R": Imath.Channel(Imath.PixelType.FLOAT),
+        "G": Imath.Channel(Imath.PixelType.FLOAT),
+        "B": Imath.Channel(Imath.PixelType.FLOAT),
+        "A": Imath.Channel(Imath.PixelType.FLOAT),
+    }
+
+    # Write file
+    exr_file = OpenEXR.OutputFile(str(path), header)
+    exr_file.writePixels({
+        "R": pixels_rgba[..., 0].astype(np.float32).tobytes(),
+        "G": pixels_rgba[..., 1].astype(np.float32).tobytes(),
+        "B": pixels_rgba[..., 2].astype(np.float32).tobytes(),
+        "A": pixels_rgba[..., 3].astype(np.float32).tobytes(),
+    })
+    exr_file.close()

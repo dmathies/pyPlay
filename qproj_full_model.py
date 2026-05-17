@@ -115,10 +115,14 @@ class TimeCodeCue(Cue):
 
 @dataclass
 class StopCue(Cue):
-    stopQid: float
+    stopQids: List[float]
     stopMode: StopMode
     fadeOutTime: float
     fadeType: FadeType
+
+    @property
+    def stopQid(self) -> Optional[float]:
+        return self.stopQids[0] if self.stopQids else None
 
 @dataclass
 class VolumeCue(Cue):
@@ -220,8 +224,12 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
                            duration=parse_timecode(data.get("duration", "00:00:00.00"))
                            )
     elif cue_type == CueType.StopCue:
+        stop_qids = data.get("stopQids")
+        if stop_qids is None:
+            legacy_stop_qid = data.get("stopQid")
+            stop_qids = [] if legacy_stop_qid is None else [legacy_stop_qid]
         return StopCue(**base,
-                       stopQid=data.get("stopQid"),
+                       stopQids=stop_qids,
                        stopMode=parse_enum(StopMode, data.get("stopMode")),
                        fadeOutTime=data.get("fadeOutTime", 0.0),
                        fadeType=parse_enum(FadeType, data.get("fadeType"))

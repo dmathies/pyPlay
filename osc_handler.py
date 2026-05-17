@@ -47,7 +47,6 @@ class OSCHandler:
         print(f"OSC Message Received: {address}, {args}")
 
     def qplayer_handler(self, client_address: list, address: str, *args):
-        # print(f"OSC Message: {address} {args}")
         if len(args) > 0:
             if args[0] == self.name:
                 # For me

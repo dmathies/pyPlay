@@ -67,14 +67,27 @@ class FadeType(StrEnum):
 
 # === Timecode Utilities ===
 def parse_timecode(time_str: str) -> timedelta:
-    h, m, s = time_str.split(":")
-    if "." in s:
-        s, hh = s.split(".")
+    h, m, sec_part = time_str.split(":")
+
+    if "." in sec_part:
+        sec_str, frac_str = sec_part.split(".", 1)
     else:
-        hh = "0"
+        sec_str, frac_str = sec_part, ""
+
+    # Support arbitrary fractional second precision from cue editors.
+    # Timedelta stores up to microseconds, so trim or pad accordingly.
+    frac_digits = "".join(ch for ch in frac_str if ch.isdigit())
+    if frac_digits:
+        frac_digits = frac_digits[:6].ljust(6, "0")
+        microseconds = int(frac_digits)
+    else:
+        microseconds = 0
 
     return timedelta(
-        hours=int(h), minutes=int(m), seconds=int(s), milliseconds=int(hh) * 10
+        hours=int(h),
+        minutes=int(m),
+        seconds=int(sec_str),
+        microseconds=microseconds,
     )
 
 
@@ -158,10 +171,14 @@ class TimeCodeCue(Cue):
 
 @dataclass
 class StopCue(Cue):
-    stopQid: str
+    stopQids: list[str]
     stopMode: StopMode
     fadeOutTime: float
     fadeType: FadeType
+
+    @property
+    def stopQid(self) -> Optional[str]:
+        return self.stopQids[0] if self.stopQids else None
 
 
 @dataclass
@@ -192,6 +209,7 @@ class VideoCue(Cue):
     alphaSoftness: Optional[float] = 0.0
     startTime: Optional[timedelta] = None
     duration: Optional[timedelta] = None
+    playbackDuration: Optional[timedelta] = None
     dimmer: Optional[float] = None
     volume: Optional[float] = None
     fadeIn: Optional[float] = None
@@ -268,6 +286,14 @@ class QProjConfig:
 
 def parse_point(p: dict[str, float]) -> Point:
     return Point(p.get("X", 0), p.get("Y", 0))
+
+
+def parse_offset(data: Dict[str, Any]) -> Point:
+    if "xPos" in data or "yPos" in data:
+        return Point(float(data.get("xPos", 0.0)), float(data.get("yPos", 0.0)))
+    if "offset" in data:
+        return parse_point(data["offset"])
+    return Point(0, 0)
 
 
 def parse_framing(f: Dict[str, Any]) -> FramingShutter:
@@ -369,9 +395,13 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             duration=parse_timecode(data.get("duration", "00:00:00.00")),
         )
     elif cue_type == CueType.StopCue:
+        stop_qids = data.get("stopQids")
+        if stop_qids is None:
+            legacy_stop_qid = data.get("stopQid")
+            stop_qids = [] if legacy_stop_qid is None else [legacy_stop_qid]
         return StopCue(
             **base,
-            stopQid=str(data.get("stopQid")),
+            stopQids=[str(qid) for qid in stop_qids],
             stopMode=parse_enum(StopMode, data.get("stopMode")),
             fadeOutTime=data.get("fadeOutTime", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
@@ -385,6 +415,10 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             fadeType=parse_enum(FadeType, data.get("fadeType")),
         )
     elif cue_type == CueType.VideoCue:
+        playback_duration = None
+        if "playbackDuration" in data and data.get("playbackDuration") not in (None, ""):
+            playback_duration = parse_timecode(data.get("playbackDuration", "00:00:00.00"))
+
         return VideoCue(
             **base,
             path=data.get("path", ""),
@@ -396,6 +430,7 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             alphaSoftness=data.get("alphaSoftness", 0.0),
             startTime=parse_timecode(data.get("startTime", "00:00:00.00")),
             duration=parse_timecode(data.get("duration", "00:00:00.00")),
+            playbackDuration=playback_duration,
             dimmer=data.get("dimmer", 1.0),
             volume=data.get("volume", 1.0),
             fadeIn=data.get("fadeIn", 0.0),
@@ -407,7 +442,7 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             scale=data.get("scale", 1.0),
             rotation=data.get("rotation", 0.0),
             stompsOthers=data.get("stompsOthers", False),
-            offset=parse_point(data["offset"]) if "offset" in data else Point(0, 0),
+            offset=parse_offset(data),
             shaderParameters=[
                 parse_shader_param(x)
                 for x in data.get("shaderParameters", data.get("uniforms", []))
@@ -425,9 +460,11 @@ def parse_cue(data: Dict[str, Any]) -> CueUnion:
             framing=[parse_framing(f) for f in data.get("framing", [{}, {}, {}, {}])],
         )
     elif cue_type == CueType.ShaderParamsCue:
+        target_qid = data.get("targetQid")
+        target = data.get("target", "0")
         return ShaderParams(
             **base,
-            videoQid=str(data.get("targetQid", data.get("target", "0"))),
+            videoQid=str(target_qid if target_qid not in (None, "") else target),
             fadeIn=data.get("fadeTime", 0.0),
             fadeType=parse_enum(FadeType, data.get("fadeType")),
             shaderParameters=[

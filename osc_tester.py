@@ -23,9 +23,11 @@ class OSCTester:
         tx_port=9000,
         name="Video1",
         monitor: bool = False,
+        raw: bool = False,
     ):
         self.ack_queue = queue.Queue()
         self.monitor = monitor
+        self.raw = raw
 
         self.max_retries = 5
         self.timeout = 1.0
@@ -71,9 +73,12 @@ class OSCTester:
             if command == "update-show":
                 self.send_file()
             else:
-                self.client.send_message(
-                    f"/qplayer/remote/{command}", [self.name] + args
-                )
+                if self.raw:
+                    address = command
+                    self.client.send_message(address, args)
+                else:
+                    address = f"/qplayer/remote/{command}"
+                    self.client.send_message(address, [self.name] + args)
 
     def _send_chunk(self, index, total_chunks, chunk_data):
         msg = OscMessageBuilder(address="/qplayer/remote/update-show")
@@ -142,6 +147,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Print incoming OSC traffic received by this tester.",
     )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Send messages without the /qplayer/remote/ prefix.",
+    )
     args = parser.parse_args()
 
     OSCTester(
@@ -150,4 +160,5 @@ if __name__ == "__main__":
         tx_port=args.tx_port,
         name=args.name,
         monitor=args.monitor,
+        raw=args.raw,
     ).main()
