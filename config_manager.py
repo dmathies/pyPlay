@@ -20,6 +20,20 @@ class ConfigManager:
                 },
                 "ip_address": "auto",
             }
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[Config] Failed to load {self.config_path}: {exc}. "
+                "Using built-in defaults."
+            )
+            return {
+                "dmx_config": {"universe": 0, "net": 0, "sub": 0},
+                "osc_config": {
+                    "osc_tx_port": 8000,
+                    "osc_rx_port": 9000,
+                    "osc_name": "Video1",
+                },
+                "ip_address": "auto",
+            }
 
     def save_config(self):
         with open(self.config_path, "w") as file:

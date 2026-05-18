@@ -1,6 +1,5 @@
 import pygame
 import ArtNet
-import socket
 import os
 import time
 import threading
@@ -9,6 +8,7 @@ from ArtNet.client import ArtNetClient
 from ArtNet.helper import serialize_device_info, deserialize_device_info
 from yaml import dump as yaml_dump
 from yaml import safe_load
+from utils import get_ip
 
 DMX_EVENT = pygame.USEREVENT + 1
 
@@ -30,24 +30,32 @@ class DMXHandler:
             "True",
         )
 
-        if local_ip == "auto":
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-
-
+        local_ip = get_ip(local_ip)
         self.client = ArtNetClient(ip=local_ip)
 
-        with open("device_config.json", "r") as f:
-            json_output = f.read()
-
-        self.DEVICE_INFO = deserialize_device_info(json_output)
+        try:
+            with open("device_config.json", "r") as f:
+                json_output = f.read()
+            self.DEVICE_INFO = deserialize_device_info(json_output)
+        except Exception as exc:
+            print(
+                f"[DMX] Failed to load device_config.json: {exc}. "
+                "Starting with DMX input disabled."
+            )
+            self.DEVICE_INFO = []
 
         # Load configuration from file or use defaults
         config_file = "artnet_config.yml"
         if os.path.exists(config_file):
-            with open(config_file, "r") as f:
-                CONFIG = safe_load(f)
+            try:
+                with open(config_file, "r") as f:
+                    CONFIG = safe_load(f) or {}
+            except Exception as exc:
+                print(
+                    f"[DMX] Failed to load {config_file}: {exc}. "
+                    "Using default Art-Net config."
+                )
+                CONFIG = {}
         else:
             CONFIG = {
                 "net": 0,
@@ -57,7 +65,19 @@ class DMXHandler:
                 "long_name": "",
             }
 
-        self.client.set_config(CONFIG, self.DEVICE_INFO)
+        if not CONFIG:
+            CONFIG = {
+                "net": 0,
+                "sub": 0,
+                "universe": 0,
+                "port_name": "",
+                "long_name": "",
+            }
+
+        try:
+            self.client.set_config(CONFIG, self.DEVICE_INFO)
+        except Exception as exc:
+            print(f"[DMX] Failed to apply Art-Net config: {exc}")
         self.config = CONFIG
 
         if self.rdm_debug:

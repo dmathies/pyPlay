@@ -310,6 +310,8 @@ class CueEngine:
     def go(self, cue_id: str = "next", paused: bool = False, start_time: float = 0.0):
         cue_id = str(cue_id)
         if cue_id == "next":
+            if not self.qid_list:
+                return
             self.last_cue = (self.last_cue + 1) % len(self.qid_list)
             cue_id = self.qid_list[self.last_cue]
 

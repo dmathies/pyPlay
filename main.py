@@ -16,7 +16,14 @@ from dmx_handler import DMXHandler, DMX_EVENT
 from http_handler import start_http_handler
 from osc_handler import OSCHandler, OSC_MESSAGE
 # from renderer import Renderer
-from qplayer_config import load_qproj, load_qproj_from_bytes, Point, FramingShutter
+from qplayer_config import (
+    FramingShutter,
+    Point,
+    QProjConfig,
+    ShowMetadata,
+    load_qproj,
+    load_qproj_from_bytes,
+)
 from utils import call_method_by_name
 from video_handler import VideoHandler, VideoData
 from websocket_handler import WS_EVENT, WebSocketHandler
@@ -227,8 +234,11 @@ def save_mesh_version(renderer):
 def load_latest_mesh():
     path = os.path.join(SAVE_DIR, "mesh_latest.json")
     if os.path.exists(path):
-        with open(path) as f:
-            return json.load(f)
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as exc:
+            print(f"[mesh] Failed to load latest mesh from {path}: {exc}")
     return None
 
 
@@ -236,9 +246,156 @@ def load_previous_mesh():
     versions = sorted(glob.glob(os.path.join(SAVE_DIR, "mesh_v*.json")))
     if len(versions) >= 2:
         prev_path = versions[-2]
-        with open(prev_path) as f:
-            return json.load(f)
+        try:
+            with open(prev_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as exc:
+            print(f"[mesh] Failed to load previous mesh from {prev_path}: {exc}")
     return None
+
+
+def empty_show_config() -> QProjConfig:
+    return QProjConfig(
+        fileFormatVersion=1,
+        showSettings=ShowMetadata(),
+        columnWidths=[],
+        cues=[],
+    )
+
+
+def safe_load_show(path: str) -> QProjConfig:
+    try:
+        show = load_qproj(path)
+        print(f"[Startup] Loaded show file {path}")
+        return show
+    except FileNotFoundError:
+        print(f"[Startup] Show file not found: {path}. Starting with an empty show.")
+    except Exception as exc:
+        print(
+            f"[Startup] Failed to load show file {path}: {exc}. "
+            "Starting with an empty show."
+        )
+    return empty_show_config()
+
+
+def create_renderer_with_fallbacks():
+    attempted = set()
+    attempts = [
+        (
+            "requested settings",
+            {
+                "single_screen": single_screen,
+                "hidden_window": hidden_window,
+                "enable_postprocess": not disable_postprocess,
+            },
+        ),
+        (
+            "postprocess disabled",
+            {
+                "single_screen": single_screen,
+                "hidden_window": hidden_window,
+                "enable_postprocess": False,
+            },
+        ),
+        (
+            "single-screen safe mode",
+            {
+                "single_screen": True,
+                "hidden_window": False,
+                "enable_postprocess": False,
+            },
+        ),
+    ]
+
+    for label, overrides in attempts:
+        key = (
+            overrides["single_screen"],
+            overrides["hidden_window"],
+            overrides["enable_postprocess"],
+        )
+        if key in attempted:
+            continue
+        attempted.add(key)
+        try:
+            renderer = Renderer(
+                single_screen=overrides["single_screen"],
+                hidden_window=overrides["hidden_window"],
+                enable_postprocess=overrides["enable_postprocess"],
+                profile_render=profile_render,
+                show_fps_overlay=show_fps_overlay,
+                warp_mesh=warp_mesh,
+                scene_scale=scene_scale,
+                hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),
+            )
+            if label != "requested settings":
+                print(f"[Startup] Renderer fallback succeeded using {label}.")
+            return renderer
+        except Exception as exc:
+            print(f"[Startup] Renderer init failed using {label}: {exc}")
+            try:
+                pygame.quit()
+            except Exception:
+                pass
+    return None
+
+
+def apply_mesh_state(renderer, loaded_mesh: dict, context: str = "mesh restore") -> bool:
+    try:
+        version = loaded_mesh.get("version", "unknown")
+        print(f"[mesh] reverting to v{version}")
+
+        left_grid = loaded_mesh.get("left_grid") or []
+        right_grid = loaded_mesh.get("right_grid") or []
+        left_corners_data = loaded_mesh.get("left_corners") or []
+        right_corners_data = loaded_mesh.get("right_corners") or []
+
+        if len(left_corners_data) != 4 or len(right_corners_data) != 4:
+            raise ValueError("corner payload must contain exactly 4 points per screen")
+
+        left_saved_rows = len(left_grid)
+        left_saved_cols = len(left_grid[0]) if left_saved_rows else 0
+        left_current_rows = len(renderer.left_grid)
+        left_current_cols = len(renderer.left_grid[0]) if left_current_rows else 0
+        if (left_saved_rows, left_saved_cols) != (left_current_rows, left_current_cols):
+            print(
+                f"[mesh] left grid size mismatch: saved={left_saved_cols}x{left_saved_rows} "
+                f"current={left_current_cols}x{left_current_rows}; restoring overlap only"
+            )
+        for i, row in enumerate(left_grid[:left_current_rows]):
+            for j, (x, y) in enumerate(row[:left_current_cols]):
+                renderer.update_vbo_vertex("left", i, j, x, y)
+
+        right_saved_rows = len(right_grid)
+        right_saved_cols = len(right_grid[0]) if right_saved_rows else 0
+        right_current_rows = len(renderer.right_grid)
+        right_current_cols = len(renderer.right_grid[0]) if right_current_rows else 0
+        if (right_saved_rows, right_saved_cols) != (right_current_rows, right_current_cols):
+            print(
+                f"[mesh] right grid size mismatch: saved={right_saved_cols}x{right_saved_rows} "
+                f"current={right_current_cols}x{right_current_rows}; restoring overlap only"
+            )
+        for i, row in enumerate(right_grid[:right_current_rows]):
+            for j, (x, y) in enumerate(row[:right_current_cols]):
+                renderer.update_vbo_vertex("right", i, j, x, y)
+
+        left_corners = [Point(c["x"], c["y"]) for c in left_corners_data]
+        right_corners = [Point(c["x"], c["y"]) for c in right_corners_data]
+        renderer.set_corners(left_corners, "left")
+        renderer.set_corners(right_corners, "right")
+        return True
+    except Exception as exc:
+        print(f"[mesh] Failed during {context}: {exc}")
+        return False
+
+
+def start_daemon(target, label: str):
+    def runner():
+        try:
+            target()
+        except Exception as exc:
+            print(f"[Startup] {label} stopped: {exc}")
+
+    threading.Thread(target=runner, daemon=True).start()
 # --------------------------------------------------
 
 
@@ -246,18 +403,12 @@ def main():
     print(f"PyPlay starting up in: {os.getcwd()}")
 
     config = ConfigManager()
-    qplayer_config = load_qproj(cue_file)
+    qplayer_config = safe_load_show(cue_file)
 
-    renderer = Renderer(
-        single_screen=single_screen,
-        hidden_window=hidden_window,
-        enable_postprocess=not disable_postprocess,
-        profile_render=profile_render,
-        show_fps_overlay=show_fps_overlay,
-        warp_mesh=warp_mesh,
-        scene_scale=scene_scale,
-        hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),
-    )
+    renderer = create_renderer_with_fallbacks()
+    if renderer is None:
+        print("[Startup] Unable to initialize any renderer mode. Exiting cleanly.")
+        return 1
     video_handler = VideoHandler()
     ndi_output = NDIOutput(
         NDIConfig(
@@ -287,62 +438,44 @@ def main():
     renderer.set_background(black_video_data)
     # renderer.set_mask(mask_data)
 
-    dmx_handler = DMXHandler(config.get_dmx_config(), config.get_ip_address())
-    osc_handler = OSCHandler(
-        ip=config.get_ip_address(),
-        rx_port=config.get_osc_rx_port(),
-        tx_port=config.get_osc_tx_port(),
-        name=config.get_osc_name(),
-    )
+    dmx_handler = None
+    try:
+        dmx_handler = DMXHandler(config.get_dmx_config(), config.get_ip_address())
+    except Exception as exc:
+        print(f"[Startup] DMX disabled: {exc}")
+
+    osc_handler = None
+    try:
+        osc_handler = OSCHandler(
+            ip=config.get_ip_address(),
+            rx_port=config.get_osc_rx_port(),
+            tx_port=config.get_osc_tx_port(),
+            name=config.get_osc_name(),
+        )
+    except Exception as exc:
+        print(f"[Startup] OSC disabled: {exc}")
 
     # Start WebSocket server to receive UI updates
     ws_handler = WebSocketHandler()
-    ws_handler.start()
+    if not ws_handler.start():
+        print("[Startup] WebSocket UI sync disabled.")
 
     #
     # # Start HTTP server to serve PWA frontend (optional)
     start_http_handler("ui", port=8080)
 
-    threading.Thread(target=dmx_handler.start_listening, daemon=True).start()
-    threading.Thread(target=osc_handler.start_server, daemon=True).start()
+    if dmx_handler is not None:
+        start_daemon(dmx_handler.start_listening, "DMX listener")
+    if osc_handler is not None:
+        start_daemon(osc_handler.start_server, "OSC server")
 
     running = True
-    cue_engine.register_callback(osc_handler.osc_tick, args=osc_handler)
+    if osc_handler is not None:
+        cue_engine.register_callback(osc_handler.osc_tick, args=osc_handler)
 
     loaded_mesh = load_latest_mesh()
     if loaded_mesh:
-        print(f"[mesh] reverting to v{loaded_mesh['version']}")
-        # restore grids
-        left_saved_rows = len(loaded_mesh["left_grid"])
-        left_saved_cols = len(loaded_mesh["left_grid"][0]) if left_saved_rows else 0
-        left_current_rows = len(renderer.left_grid)
-        left_current_cols = len(renderer.left_grid[0]) if left_current_rows else 0
-        if (left_saved_rows, left_saved_cols) != (left_current_rows, left_current_cols):
-            print(
-                f"[mesh] left grid size mismatch: saved={left_saved_cols}x{left_saved_rows} "
-                f"current={left_current_cols}x{left_current_rows}; restoring overlap only"
-            )
-        for i, row in enumerate(loaded_mesh["left_grid"][:left_current_rows]):
-            for j, (x, y) in enumerate(row[:left_current_cols]):
-                renderer.update_vbo_vertex("left", i, j, x, y)
-
-        right_saved_rows = len(loaded_mesh["right_grid"])
-        right_saved_cols = len(loaded_mesh["right_grid"][0]) if right_saved_rows else 0
-        right_current_rows = len(renderer.right_grid)
-        right_current_cols = len(renderer.right_grid[0]) if right_current_rows else 0
-        if (right_saved_rows, right_saved_cols) != (right_current_rows, right_current_cols):
-            print(
-                f"[mesh] right grid size mismatch: saved={right_saved_cols}x{right_saved_rows} "
-                f"current={right_current_cols}x{right_current_rows}; restoring overlap only"
-            )
-        for i, row in enumerate(loaded_mesh["right_grid"][:right_current_rows]):
-            for j, (x, y) in enumerate(row[:right_current_cols]):
-                renderer.update_vbo_vertex("right", i, j, x, y)
-        # restore corners (this recomputes homography)
-        left_corners = [Point(c["x"], c["y"]) for c in loaded_mesh["left_corners"]]
-        right_corners = [Point(c["x"], c["y"]) for c in loaded_mesh["right_corners"]]
-        renderer.set_corners(left_corners, "left")
-        renderer.set_corners(right_corners, "right")
+        apply_mesh_state(renderer, loaded_mesh, context="startup mesh restore")
 
         # # push back to all UIs
         # ws_handler.send_to_clients({
@@ -491,21 +624,7 @@ def main():
                                 "type": "mesh_error",
                                 "error": "No previous version to revert to."
                             })
-                        else:
-                            print(f"[mesh] reverting to v{loaded_mesh['version']}")
-                            # restore grids
-                            for i, row in enumerate(loaded_mesh["left_grid"]):
-                                for j, (x, y) in enumerate(row):
-                                    renderer.update_vbo_vertex("left", i, j, x, y)
-                            for i, row in enumerate(loaded_mesh["right_grid"]):
-                                for j, (x, y) in enumerate(row):
-                                    renderer.update_vbo_vertex("right", i, j, x, y)
-                            # restore corners (this recomputes homography)
-                            left_corners = [Point(c["x"], c["y"]) for c in loaded_mesh["left_corners"]]
-                            right_corners = [Point(c["x"], c["y"]) for c in loaded_mesh["right_corners"]]
-                            renderer.set_corners(left_corners, "left")
-                            renderer.set_corners(right_corners, "right")
-
+                        elif apply_mesh_state(renderer, loaded_mesh, context="mesh revert"):
                             # push back to all UIs
                             ws_handler.send_to_clients({
                                 "type": "mesh_data",
@@ -526,6 +645,11 @@ def main():
                                 "leftCorners": loaded_mesh["left_corners"],
                                 "rightCorners": loaded_mesh["right_corners"],
                             })
+                        else:
+                            ws_handler.send_to_clients({
+                                "type": "mesh_error",
+                                "error": "Previous mesh version is invalid."
+                            })
 
                     elif data.get("status"):
                         page = data.get("status")
@@ -541,7 +665,7 @@ def main():
                         elif page == "framing":
                             ws_handler.send_to_clients({"framing": [asdict(p) for p in renderer.framing]})
 
-            latest_dmx_event = dmx_handler.pop_latest_event()
+            latest_dmx_event = dmx_handler.pop_latest_event() if dmx_handler is not None else None
             if latest_dmx_event is not None:
                 universe = latest_dmx_event.get("universe")
                 data = latest_dmx_event.get("data")
@@ -574,7 +698,8 @@ def main():
 
     ndi_output.close()
     pygame.quit()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

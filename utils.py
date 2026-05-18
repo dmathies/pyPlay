@@ -52,12 +52,40 @@ def call_method_by_name(obj, method_name, *args, **kwargs):
 
 
 def get_ip(ip="auto"):
-    if ip == "auto":
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+    if ip != "auto":
+        return ip
 
-    return ip
+    try:
+        default_gateway = netifaces.gateways().get("default", {}).get(netifaces.AF_INET)
+        if default_gateway:
+            iface = default_gateway[1]
+            addresses = netifaces.ifaddresses(iface).get(netifaces.AF_INET, [])
+            for addr_info in addresses:
+                candidate = addr_info.get("addr")
+                if candidate and not candidate.startswith("127."):
+                    return candidate
+    except Exception:
+        pass
+
+    try:
+        for iface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(iface).get(netifaces.AF_INET, [])
+            for addr_info in addresses:
+                candidate = addr_info.get("addr")
+                if candidate and not candidate.startswith("127."):
+                    return candidate
+    except Exception:
+        pass
+
+    try:
+        hostname_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+        for candidate in hostname_ips:
+            if candidate and not candidate.startswith("127."):
+                return candidate
+    except Exception:
+        pass
+
+    return "127.0.0.1"
 
 
 def get_broadcast(ip="auto"):
@@ -70,6 +98,8 @@ def get_broadcast(ip="auto"):
             for addr_info in addresses[netifaces.AF_INET]:
                 if addr_info.get("addr") == ip:
                     netmask = addr_info.get("netmask")
+                    if not netmask:
+                        continue
                     network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
                     return str(network.broadcast_address)
-    return None
+    return "255.255.255.255"
