@@ -33,12 +33,15 @@ export default function MeshPage({ wsRef }) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [version, setVersion] = useState(null);
   const [showGridOverlay, setShowGridOverlay] = useState(false);
+  const [selectedPoint, setSelectedPoint] = useState(null);
 
   const pointsRef = useRef(leftPoints);
   const draggingRef = useRef(null);
   const panningRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const panRef = useRef(pan);
+  const selectedPointRef = useRef(null);
+  const selectedScreenRef = useRef("left");
 
   useEffect(() => {
     const ws = wsRef?.current;
@@ -52,6 +55,14 @@ export default function MeshPage({ wsRef }) {
   useEffect(() => {
     panRef.current = pan;
   }, [pan]);
+
+  useEffect(() => {
+    selectedPointRef.current = selectedPoint;
+  }, [selectedPoint]);
+
+  useEffect(() => {
+    selectedScreenRef.current = selectedScreen;
+  }, [selectedScreen]);
 
   useEffect(() => {
     pointsRef.current = selectedScreen === "left" ? leftPoints : rightPoints;
@@ -119,6 +130,18 @@ export default function MeshPage({ wsRef }) {
         ctx.fill();
       }
     }
+
+    // Draw selection ring around selected point
+    const sel = selectedPointRef.current;
+    if (sel && pts[sel.i] && pts[sel.i][sel.j]) {
+      const p = pts[sel.i][sel.j];
+      const [ssx, ssy] = toScreen(p.x, p.y);
+      ctx.beginPath();
+      ctx.strokeStyle = "#00cfff";
+      ctx.lineWidth = 2;
+      ctx.arc(ssx, ssy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   };
 
   useEffect(() => {
@@ -139,9 +162,72 @@ export default function MeshPage({ wsRef }) {
     const onKey = (e) => {
       if (e.key === "+" || e.key === "=") {
         setZoom((z) => Math.min(3, z + 0.1));
-      } else if (e.key === "-") {
-        setZoom((z) => Math.max(0.4, z - 0.1));
+        return;
       }
+      if (e.key === "-") {
+        setZoom((z) => Math.max(0.4, z - 0.1));
+        return;
+      }
+
+      const sel = selectedPointRef.current;
+      if (!sel) return;
+
+      const isTab = e.key === "Tab";
+      if (isTab) {
+        e.preventDefault();
+        const rows = DIVS + 1;
+        const cols = DIVS + 1;
+        const flat = sel.i * cols + sel.j;
+        const next = e.shiftKey
+          ? (flat - 1 + rows * cols) % (rows * cols)
+          : (flat + 1) % (rows * cols);
+        const newSel = { i: Math.floor(next / cols), j: next % cols };
+        selectedPointRef.current = newSel;
+        setSelectedPoint(newSel);
+        return;
+      }
+
+      const isArrow = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key);
+      const isReset = e.key === "r" || e.key === "R";
+      if (!isArrow && !isReset) return;
+
+      e.preventDefault();
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const screen = selectedScreenRef.current;
+
+      const applyUpdate = (newX, newY) => {
+        newX = Math.min(1 + MARGIN, Math.max(-MARGIN, newX));
+        newY = Math.min(1 + MARGIN, Math.max(-MARGIN, newY));
+        const setter = screen === "left" ? setLeftPoints : setRightPoints;
+        setter((prev) => {
+          const copy = prev.map((row) => row.map((p) => ({ ...p })));
+          copy[sel.i][sel.j] = { x: newX, y: newY };
+          return copy;
+        });
+        if (wsRef?.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: "mesh_update",
+            screen,
+            i: sel.i,
+            j: sel.j,
+            x: newX,
+            y: newY,
+          }));
+        }
+      };
+
+      if (isReset) {
+        applyUpdate(sel.j / DIVS, sel.i / DIVS);
+        return;
+      }
+
+      const step = e.shiftKey ? 5 : 0.5;
+      const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+      const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+      const cur = pointsRef.current[sel.i][sel.j];
+      applyUpdate(cur.x + dx / canvas.width, cur.y + dy / canvas.height);
     };
 
     window.addEventListener("keydown", onKey);
@@ -171,7 +257,7 @@ export default function MeshPage({ wsRef }) {
 
   useEffect(() => {
     draw();
-  }, [selectedScreen, leftPoints, rightPoints, zoom, pan]);
+  }, [selectedScreen, leftPoints, rightPoints, zoom, pan, selectedPoint]);
 
   useEffect(() => {
     const ws = wsRef?.current;
@@ -267,7 +353,11 @@ export default function MeshPage({ wsRef }) {
       }
 
       const hit = findPoint(sx, sy);
-      if (hit) draggingRef.current = hit;
+      if (hit) {
+        draggingRef.current = hit;
+        selectedPointRef.current = hit;
+        setSelectedPoint(hit);
+      }
       e.preventDefault();
     };
 
