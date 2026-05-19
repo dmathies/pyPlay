@@ -4,11 +4,13 @@ import math
 
 import av
 import numpy as np
+import numpy.typing as npt
 import pygame
 import re
 import ctypes
 from OpenGL.GL import *
-from OpenGL.GL.shaders import compileProgram, compileShader
+from OpenGL.GL.shaders import compileProgram, compileShader, ShaderProgram
+from dataclasses import dataclass
 
 import sys
 import os
@@ -20,7 +22,7 @@ if sys.version_info >= (3, 9):
 else:
     from importlib.resources import open_binary, read_text
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cue_engine import ActiveCue
@@ -53,6 +55,17 @@ TEXTURE_UNIT_LOOKUP = [
     GL_TEXTURE14,
     GL_TEXTURE15,
 ]
+
+
+@dataclass
+class Shader:
+    shader: ShaderProgram
+    uniforms: list[str]
+    uniform_locators: dict[str, int]
+    uniform_types: dict[str, Constant]
+    uniform_values: dict[str, Any]
+    blend_mode: tuple[int, int]
+    hash: int
 
 
 class Renderer:
@@ -152,7 +165,7 @@ class Renderer:
         self.transition_duration = None
         self.dimmer = 1.0
         self.alpha = 0.0
-        self.SHADERS = {}
+        self.SHADERS: dict[str, Shader] = {}
         self.current_shader = None
         self.hidden_window = hidden_window
         self.single_screen = single_screen or hidden_window
@@ -206,7 +219,7 @@ class Renderer:
         self.profile_cues = os.environ.get("PYPLAY_PROFILE_CUES", "0") in ("1", "true", "True")
         self.profile_gpu = os.environ.get("PYPLAY_PROFILE_GPU", "0") in ("1", "true", "True")
         self.ndi_debug = os.environ.get("PYPLAY_NDI_DEBUG", "0") in ("1", "true", "True")
-        self.max_fps = max(0, int(os.environ.get("PYPLAY_MAX_FPS", "25")))
+        self.max_fps = max(0, int(os.environ.get("PYPLAY_MAX_FPS", "60")))
         self._last_ndi_capture_debug = 0.0
         self.identity_homography = np.eye(3, dtype=np.float32).flatten()
         self.show_mesh_grid = False
@@ -743,7 +756,7 @@ class Renderer:
         if alpha_video:
             if alpha_video.status == VideoStatus.READY:
                 texture_filter = GL_NEAREST if uses_dmx_group_map else GL_LINEAR
-                self.bind_texture_layer(alpha_video, 1, texture_filter=texture_filter)
+                self.bind_texture_layer(alpha_video, 1, texture_filter)
                 self.set_parameters(
                     {
                         "alphaMode": AlphaMode.to_number(alphaMode),
@@ -979,18 +992,29 @@ class Renderer:
         if parameters.get("fade_time", None) is not None:
             self.transition_duration = parameters.get("fade_time")
 
+        shader = self.SHADERS[self.current_shader]
         for parameter in parameters:
-            location = self.SHADERS[self.current_shader]["uniform_locators"].get(
+            location = shader.uniform_locators.get(
                 parameter, None
             )
             if location is not None:
+                value = parameters.get(parameter)
+
+                prev_val = shader.uniform_values[parameter]
+                if isinstance(value, np.ndarray):
+                    if prev_val is not None and np.array_equal(prev_val, value):
+                        continue  # Skip if array value hasn't changed
+                    shader.uniform_values[parameter] = value.copy()
+                else:
+                    if prev_val != None and prev_val == value:
+                        continue  # Skip if value hasn't changed
+                    shader.uniform_values[parameter] = value
 
                 uniform_type = (
-                    self.SHADERS[self.current_shader]["uniform_types"]
+                    shader.uniform_types
                     .get(parameter)
                     .value
                 )
-                value = parameters.get(parameter)
 
                 # print(f"Set {parameter} to {value} ({uniform_type})")
 
@@ -1035,10 +1059,10 @@ class Renderer:
 
         if self.current_shader != shader_name:
             self.current_shader = shader_name
-            glUseProgram(self.SHADERS[shader_name]["shader"])
+            glUseProgram(self.SHADERS[shader_name].shader)
 
-        if self.SHADERS[shader_name].get("blend_mode", None):
-            glBlendFunc(*self.SHADERS[shader_name]["blend_mode"])
+            if self.SHADERS[shader_name].blend_mode:
+                glBlendFunc(*self.SHADERS[shader_name].blend_mode)
         # if not shader_name.startswith("default"):
         #     print(f"Set shader to {shader_name}")
 
@@ -1083,7 +1107,7 @@ class Renderer:
 
         shader_hash = hash(vertex_shader + fragment_shader)
         if self.SHADERS.get(shader_name):
-            if self.SHADERS[shader_name]["hash"] == shader_hash:
+            if self.SHADERS[shader_name].hash == shader_hash:
                 return
 
         shader = compileProgram(
@@ -1094,6 +1118,7 @@ class Renderer:
         uniforms = []
         locators = {}
         uniform_types = {}
+        uniform_values = {}
 
         num_uniforms = glGetProgramiv(shader, GL_ACTIVE_UNIFORMS)
         for i in range(num_uniforms):
@@ -1112,17 +1137,19 @@ class Renderer:
             locators[uni_name] = location
             uniform_types[uni_name] = uniform_type
             uniforms.append(uni_name)
+            uniform_values[uni_name] = None
 
         blend_mode = self.get_shader_blend_mode(fragment_shader)
 
-        self.SHADERS[shader_name] = {
-            "shader": shader,
-            "uniforms": uniforms,
-            "uniform_locators": locators,
-            "uniform_types": uniform_types,
-            "blend_mode": blend_mode,
-            "hash": hash(vertex_shader + fragment_shader),
-        }
+        self.SHADERS[shader_name] = Shader(
+            shader=shader,
+            uniforms=uniforms,
+            uniform_locators=locators,
+            uniform_types=uniform_types,
+            uniform_values=uniform_values,
+            blend_mode=blend_mode,
+            hash=hash(vertex_shader + fragment_shader),
+        )
 
         return shader
 
@@ -1168,13 +1195,13 @@ class Renderer:
         return GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 
 
-    def bind_texture(self, alpha, dimmer, video_data, clamp=GL_CLAMP_TO_EDGE):
+    def bind_texture(self, alpha, dimmer, video_data):
         self.set_parameters({"dimmer": dimmer, "alpha": alpha})
 
         # For each video, bind its textures to designated texture units and set sampler uniforms.
         # Video1 textures.
         if video_data.status == VideoStatus.READY:
-            self.bind_texture_layer(video_data, 0, clamp)
+            self.bind_texture_layer(video_data, 0)
         else:
             self.set_parameters({"dimmer": 0.0})
 
@@ -1233,24 +1260,15 @@ class Renderer:
         )
         glBindTexture(GL_TEXTURE_2D, 0)
 
-    def update_dmx_lookup(self, values: list[int] | tuple[int, ...] | np.ndarray):
+    def update_dmx_lookup(self, values: npt.NDArray[np.byte]):
         if not self.dmx_lookup_texture:
             self.setup_dmx_lookup_texture()
 
-        pixels = np.full((1, 128, 4), 255, dtype=np.uint8)
-        for group in range(128):
-            base = group * 4
-            if base >= len(values):
-                break
-            pixels[0, group, 0] = int(values[base]) & 0xFF
-            if base + 1 < len(values):
-                pixels[0, group, 1] = int(values[base + 1]) & 0xFF
-            if base + 2 < len(values):
-                pixels[0, group, 2] = int(values[base + 2]) & 0xFF
-            if base + 3 < len(values):
-                pixels[0, group, 3] = int(values[base + 3]) & 0xFF
+        # Copy the received DMX into the rgba pixel buffer, filling the remaining pixels with 255
+        pixels = self.dmx_lookup_pixels.view(dtype=np.uint8).reshape((512,))
+        pixels[:len(values)] = values
+        pixels[len(values):] = 255
 
-        self.dmx_lookup_pixels = pixels
         glBindTexture(GL_TEXTURE_2D, self.dmx_lookup_texture)
         glTexSubImage2D(
             GL_TEXTURE_2D,
@@ -1303,12 +1321,15 @@ class Renderer:
     def create_textures(self, video_data: VideoData):
 
         textures = {}
+        textures["filter"] = None  # A cache for the texture's filtering mode (ie: GL_LINEAR or GL_NEAREST).
 
         frame = video_data.get_next_frame()
         if frame is None:
             print("create_textures: no frame available, skipping texture creation")
             # Leave video_data.status as LOADED so we can retry next frame
             return
+        
+        
 
         if isinstance(frame, np.ndarray):
             channels = frame.shape[2] if frame.ndim == 3 else 1
@@ -1583,8 +1604,7 @@ class Renderer:
         self,
         video_data,
         layer,
-        clamp=GL_CLAMP_TO_EDGE,
-        texture_filter=GL_LINEAR,
+        texture_filter=GL_LINEAR
     ):
         if len(video_data.textures) == 0:
             # Something didn't work while creating textures, avoid crashing by failing silently
@@ -1598,10 +1618,10 @@ class Renderer:
         def bind_unit(unit_index, texture_id):
             glActiveTexture(TEXTURE_UNIT_LOOKUP[unit_index])
             glBindTexture(GL_TEXTURE_2D, texture_id)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_filter)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, texture_filter)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp)
+            if (video_data.textures["filter"] != texture_filter):
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_filter)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, texture_filter)
+                video_data.textures["filter"] = texture_filter
 
         if video_data.frame_pix_format == VideoFrameFormat.RGB:
             bind_unit(tex_unit, video_data.textures["RGB"])

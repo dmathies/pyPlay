@@ -11,6 +11,15 @@
             "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
             "program": "${file}",
             "console": "integratedTerminal"
-        }
+        },
+        {
+            "name": "Python Debugger: PyPlay Main",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "program": "${workspaceFolder}\\main.py",
+            "args": ["--single-screen"],
+            "console": "integratedTerminal"
+        },
     ]
 }

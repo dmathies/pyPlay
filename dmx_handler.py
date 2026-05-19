@@ -109,7 +109,7 @@ class DMXHandler:
             if not self._accept_sequence(ip, universe, sequence):
                 return
 
-            dmx_data = reply.get("Data") or []
+            dmx_data: bytes = reply.get("Data") or bytes()
             required_length = base_addr + 23
             if base_addr is None or base_addr <= 0 or len(dmx_data) < required_length:
                 print(
@@ -124,7 +124,7 @@ class DMXHandler:
 
             event_data = {
                 "universe": int(uni) + 1,
-                "data": list(dmx_data),
+                "data": dmx_data,
                 "dimmer": dmx_data[base_addr - 1] / 255.0,
                 "video_index": dmx_data[base_addr],
                 "video_mode": dmx_data[base_addr + 1],

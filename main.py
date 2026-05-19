@@ -316,26 +316,26 @@ def create_renderer_with_fallbacks():
         if key in attempted:
             continue
         attempted.add(key)
-        try:
-            renderer = Renderer(
-                single_screen=overrides["single_screen"],
-                hidden_window=overrides["hidden_window"],
-                enable_postprocess=overrides["enable_postprocess"],
-                profile_render=profile_render,
-                show_fps_overlay=show_fps_overlay,
-                warp_mesh=warp_mesh,
-                scene_scale=scene_scale,
-                hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),
-            )
-            if label != "requested settings":
-                print(f"[Startup] Renderer fallback succeeded using {label}.")
-            return renderer
-        except Exception as exc:
-            print(f"[Startup] Renderer init failed using {label}: {exc}")
-            try:
-                pygame.quit()
-            except Exception:
-                pass
+        #try:
+        renderer = Renderer(
+            single_screen=overrides["single_screen"],
+            hidden_window=overrides["hidden_window"],
+            enable_postprocess=overrides["enable_postprocess"],
+            profile_render=profile_render,
+            show_fps_overlay=show_fps_overlay,
+            warp_mesh=warp_mesh,
+            scene_scale=scene_scale,
+            hidden_window_size=ndi_size if ndi_size != (0, 0) else (1280, 720),
+        )
+        if label != "requested settings":
+            print(f"[Startup] Renderer fallback succeeded using {label}.")
+        return renderer
+        #except Exception as exc:
+        #    print(f"[Startup] Renderer init failed using {label}: {exc}")
+        #    try:
+        #        pygame.quit()
+        #    except Exception:
+        #        pass
     return None
 
 
@@ -668,7 +668,7 @@ def main():
             latest_dmx_event = dmx_handler.pop_latest_event() if dmx_handler is not None else None
             if latest_dmx_event is not None:
                 universe = latest_dmx_event.get("universe")
-                data = latest_dmx_event.get("data")
+                data: bytes = latest_dmx_event.get("data")
                 if universe is not None and data is not None:
                     cue_engine.update_dmx_levels(int(universe), data)
 

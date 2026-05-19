@@ -5,6 +5,8 @@ import os.path
 import time
 from enum import IntEnum
 import re
+import numpy as np
+import numpy.typing as npt
 
 import pygame
 
@@ -125,7 +127,7 @@ class CueEngine:
         self.last_cue = -1
         self.qid_list: list[str] = []
         self.qid_order: dict[str, int] = {}
-        self.dmx_state: dict[int, list[int]] = {}
+        self.dmx_state: dict[int, npt.NDArray[np.uint8]] = {}
         self.active_dmx_universe: Optional[int] = None
         self._last_dmx_debug_time = 0.0
         self.dmx_trace_cues = {
@@ -221,23 +223,24 @@ class CueEngine:
         self.callback = callback
         self.callback_args = args
 
-    def update_dmx_levels(self, universe: int, data: list[int]):
+    def update_dmx_levels(self, universe: int, data: bytes):
         if universe < 1:
             return
 
         if data is None:
             return
 
-        # Ensure 512 channels for direct 1-based channel addressing.
-        values = [int(v) & 0xFF for v in data[:512]]
-        if len(values) < 512:
-            values.extend([0] * (512 - len(values)))
+        # Get the dmx state for this universe, or create one if this universe hs just been discovered
+        if universe not in self.dmx_state:
+            dmx_state = self.dmx_state[universe] = np.zeros((512,), dtype=np.uint8)
+        else:
+            dmx_state = self.dmx_state[universe]
 
-        self.dmx_state[universe] = values
+        dmx_state[:len(data)] = np.frombuffer(data, dtype=np.uint8)
         self.active_dmx_universe = universe
         if self.renderer is not None:
             try:
-                self.renderer.update_dmx_lookup(values)
+                self.renderer.update_dmx_lookup(dmx_state)
             except Exception:
                 pass
 
@@ -891,7 +894,7 @@ class CueEngine:
         channel = int(dmx_address)
         universe = self.active_dmx_universe
         if universe is None and self.dmx_state:
-            universe = next(iter(sorted(self.dmx_state.keys())))
+            universe = next(iter(sorted(self.dmx_state.keys())))  # r/programminghorror finding the lowest universe in O(n log n)
 
         if universe is None:
             return (1.0, 1.0, 1.0), 1.0

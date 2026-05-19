@@ -380,9 +380,7 @@
     },
     {
       "$type": "StopCue",
-      "stopQids": [
-        1007.1
-      ],
+      "stopQid": 0,
       "stopMode": 1,
       "fadeOutTime": 1,
       "fadeType": 1,
@@ -2678,9 +2676,7 @@
     },
     {
       "$type": "StopCue",
-      "stopQids": [
-        1400.1
-      ],
+      "stopQid": 1400.1,
       "stopMode": 0,
       "fadeOutTime": 1,
       "fadeType": 1,
