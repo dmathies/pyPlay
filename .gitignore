@@ -1,6 +1,10 @@
 *.mp4
 *.jpg
 *.png
+
+!black.jpg
+!Mask.jpg
+
 temp.dat
 /*venv
 
