@@ -596,8 +596,6 @@ class Renderer:
 
         if self.max_fps > 0:
             self.clock.tick(self.max_fps)
-        else:
-            self.clock.tick()
 
         # --- profiling end / print ---
         frame_end = time.perf_counter()

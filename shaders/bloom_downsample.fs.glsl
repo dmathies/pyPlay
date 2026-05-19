@@ -24,6 +24,6 @@ void main() {
         texture(sourceTex, uv - x + y).rgb +
         texture(sourceTex, uv - x - y).rgb;
 
-    vec3 result = center + cross * 0.125 + corners * 0.0625;
+    vec3 result = center + cross * 0.1875; // + corners * 0.0625;
     fragColor = vec4(result, 1.0);
 }

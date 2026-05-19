@@ -44,7 +44,13 @@ def read_png_rgba(source: Path) -> np.ndarray:
     return rgba.astype(np.float32) / 255.0
 
 
-def convert_file(source: Path, destination: Path, overwrite: bool, include_alpha: bool) -> None:
+def convert_file(
+    source: Path,
+    destination: Path,
+    overwrite: bool,
+    include_alpha: bool,
+    black_threshold: float,
+) -> None:
     if destination.exists() and not overwrite:
         print(f"skip  {destination} (already exists)")
         return
@@ -53,7 +59,7 @@ def convert_file(source: Path, destination: Path, overwrite: bool, include_alpha
     pixels = rgba if include_alpha else rgba[..., :3]
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    write_pyp_image(destination, pixels)
+    write_pyp_image(destination, pixels, black_threshold=black_threshold)
 
     height, width = pixels.shape[:2]
     channels = pixels.shape[2] if pixels.ndim == 3 else 1
@@ -87,7 +93,16 @@ def main() -> int:
         action="store_true",
         help="Store RGB only in output .pyp, dropping PNG alpha.",
     )
+    parser.add_argument(
+        "--black-threshold",
+        type=float,
+        default=1e-6,
+        help="Threshold used when detecting non-black pixels for content bounds metadata.",
+    )
     args = parser.parse_args()
+
+    if args.black_threshold < 0.0:
+        parser.error("--black-threshold must be non-negative.")
 
     sources = iter_png_files(args.inputs, args.recursive)
     if not sources:
@@ -105,6 +120,7 @@ def main() -> int:
                 destination,
                 overwrite=args.overwrite,
                 include_alpha=not args.no_alpha,
+                black_threshold=args.black_threshold,
             )
     finally:
         pygame.image.quit()

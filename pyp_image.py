@@ -19,6 +19,7 @@ PYP_DTYPE_FLOAT16 = 1
 PYP_CHANNELS_RGB = 3
 PYP_CHANNELS_RGBA = 4
 PYP_HEADER_STRUCT = struct.Struct("<4sIIII4f")
+DEFAULT_BLACK_THRESHOLD = 1e-6
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class PypImage:
 
 
 def find_content_bounds_uv(
-    image: np.ndarray, threshold: float = 1e-6
+    image: np.ndarray, threshold: float = DEFAULT_BLACK_THRESHOLD
 ) -> tuple[float, float, float, float]:
     height, width = image.shape[:2]
     if width <= 0 or height <= 0:
@@ -104,12 +105,13 @@ def write_pyp_image(
     path: str | Path,
     pixels: np.ndarray,
     content_bounds_uv: tuple[float, float, float, float] | None = None,
+    black_threshold: float = DEFAULT_BLACK_THRESHOLD,
 ) -> None:
     if pixels.ndim != 3 or pixels.shape[2] not in (PYP_CHANNELS_RGB, PYP_CHANNELS_RGBA):
         raise ValueError("PYP images must be HxWx3 RGB or HxWx4 RGBA arrays.")
 
     height, width, channels = pixels.shape
-    bounds = content_bounds_uv or find_content_bounds_uv(pixels)
+    bounds = content_bounds_uv or find_content_bounds_uv(pixels, threshold=black_threshold)
     pixels16 = np.ascontiguousarray(pixels.astype(np.float16, copy=False))
 
     header = PYP_HEADER_STRUCT.pack(

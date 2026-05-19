@@ -19,11 +19,11 @@ vec3 tentSample(sampler2D tex, vec2 uv, vec2 texelSize) {
     result += texture(tex, uv - x).rgb * 2.0;
     result += texture(tex, uv + y).rgb * 2.0;
     result += texture(tex, uv - y).rgb * 2.0;
-    result += texture(tex, uv + x + y).rgb;
-    result += texture(tex, uv + x - y).rgb;
-    result += texture(tex, uv - x + y).rgb;
-    result += texture(tex, uv - x - y).rgb;
-    return result / 16.0;
+    // result += texture(tex, uv + x + y).rgb;
+    // result += texture(tex, uv + x - y).rgb;
+    // result += texture(tex, uv - x + y).rgb;
+    // result += texture(tex, uv - x - y).rgb;
+    return result / 10.0;
 }
 
 void main() {
